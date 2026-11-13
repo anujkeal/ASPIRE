@@ -1,8 +1,13 @@
 package com.keal.aspire
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,9 +39,19 @@ class MainActivity : ComponentActivity() {
                 var showHome by remember { mutableStateOf(false) }
                 var showLibrary by remember { mutableStateOf(false) }
                 var showNowPlaying by remember { mutableStateOf(false) }
+                val notificationPermission = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { }
                 LaunchedEffect(Unit) {
                     delay(2600)
                     showHome = true
+                }
+                LaunchedEffect(showHome) {
+                    if (showHome && Build.VERSION.SDK_INT >= 33 &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
                 BackHandler(enabled = showNowPlaying) { showNowPlaying = false }
                 BackHandler(enabled = showLibrary && !showNowPlaying) { showLibrary = false }
