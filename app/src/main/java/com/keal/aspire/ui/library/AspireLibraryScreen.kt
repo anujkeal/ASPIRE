@@ -6,7 +6,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.media.MediaPlayer
+import com.keal.aspire.playback.AspirePlaybackController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -178,7 +179,7 @@ private object LibraryData {
     }
 }
 
-private object Artwork {
+internal object Artwork {
     private const val CACHE_KB = 24 * 1024
     private val noArtKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val memory = object : LruCache<String, Bitmap>(CACHE_KB) {
@@ -255,31 +256,9 @@ private object Artwork {
     }
 }
 
-object AspireAudioPlayer {
-    private var player: MediaPlayer? = null
-    private val queue = ArrayDeque<AspireSong>()
-    fun play(context: Context, song: AspireSong) {
-        runCatching {
-            player?.release()
-            player = MediaPlayer().apply {
-                setDataSource(context, song.uri)
-                setOnPreparedListener { it.start() }
-                setOnCompletionListener { playNext(context) }
-                prepareAsync()
-            }
-        }
-    }
-    fun playNext(song: AspireSong) { queue.addFirst(song) }
-    fun enqueue(song: AspireSong) { queue.addLast(song) }
-    private fun playNext(context: Context) {
-        val next = queue.removeFirstOrNull() ?: return
-        play(context, next)
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AspireLibraryScreen(onBack: () -> Unit) {
+fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var allowed by remember { mutableStateOf(checkAudioPermission(context)) }
@@ -288,7 +267,8 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var genres by remember { mutableStateOf(emptyList<GenreItem>()) }
     var loading by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Songs") }
-    var playingId by remember { mutableStateOf<Long?>(null) }
+    val playback by AspirePlaybackController.state.collectAsStateWithLifecycle()
+    val playingId = playback.mediaId
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     var selectedAlbum by remember { mutableStateOf<Long?>(null) }
@@ -435,9 +415,9 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
             }
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink.White) }
-            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it })
+            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { song -> AspirePlaybackController.play(context, songs, song); onOpenNowPlaying() }, onMenu = { menuSong = it })
             tab == "Songs" -> if (filtered.isEmpty()) EmptyResults(::scan) else Row(Modifier.fillMaxSize()) {
-                SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
+                SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { song -> AspirePlaybackController.play(context, songs, song); onOpenNowPlaying() }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
                 AlphabetIndex(
                     songs = filtered,
                     state = listState,
@@ -491,8 +471,8 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 listOf("Play next", "Add to queue", "Add to playlist", "Go to artist", "Go to album", "Song info", "Delete").forEach { action ->
                     Text(action, color = Ink.White, modifier = Modifier.fillMaxWidth().clickable {
                         when (action) {
-                            "Play next" -> AspireAudioPlayer.playNext(song)
-                            "Add to queue" -> AspireAudioPlayer.enqueue(song)
+                            "Play next" -> AspirePlaybackController.addNext(context, song)
+                            "Add to queue" -> AspirePlaybackController.enqueue(context, song)
                             "Add to playlist" -> Toast.makeText(context, "Playlist creation will be connected with the Playlists screen", Toast.LENGTH_SHORT).show()
                             "Go to artist" -> { selectedArtist = song.artist; selectedAlbum = null; selectedGenre = null }
                             "Go to album" -> { selectedAlbum = song.albumId; selectedArtist = null; selectedGenre = null }
