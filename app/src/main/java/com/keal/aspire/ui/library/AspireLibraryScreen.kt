@@ -188,7 +188,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var genres by remember { mutableStateOf(emptyList<GenreItem>()) }
     var loading by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Songs") }
-    var playingId by remember { mutableStateOf<Long?>(null) }
+    var playingId by remember { mutableStateOf(AspireLastPlayedStore.read(context)?.mediaId) }
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     var selectedAlbum by remember { mutableStateOf<Long?>(null) }
@@ -218,8 +218,6 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
         else permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
     }
     LaunchedEffect(allowed) { if (allowed && songs.isEmpty()) scan() }
-    LaunchedEffect(listState.firstVisibleItemIndex, filtered) { filtered.getOrNull(listState.firstVisibleItemIndex)?.let { activeLetter = it.letter } }
-
     val albums = remember(songs) {
         songs.groupBy { it.albumId }.values.mapNotNull { group ->
             group.firstOrNull()?.let { AlbumItem(it.albumId, it.album, it.artist, it.art) }
@@ -240,6 +238,10 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
         val map = LinkedHashMap<String, Int>()
         filtered.forEachIndexed { i, song -> if (!map.containsKey(song.letter)) map[song.letter] = i }
         map
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, filtered) {
+        filtered.getOrNull(listState.firstVisibleItemIndex)?.let { activeLetter = it.letter }
     }
 
     Column(Modifier.fillMaxSize().background(Ink.Background).padding(top = 8.dp)) {
