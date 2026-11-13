@@ -114,6 +114,7 @@ class AspirePlaybackService : MediaSessionService() {
             .putLong(KEY_ALBUM_ID, metadata.extras?.getLong(KEY_ALBUM_ID, -1L) ?: -1L)
             .putBoolean(KEY_PLAYING, player.isPlaying)
             .putLong(KEY_POSITION, player.currentPosition.coerceAtLeast(0L))
+            .putInt(KEY_AUDIO_SESSION_ID, player.audioSessionId)
             .apply()
     }
 
@@ -138,5 +139,6 @@ class AspirePlaybackService : MediaSessionService() {
         private const val KEY_ALBUM_ID = "album_id"
         private const val KEY_PLAYING = "is_playing"
         private const val KEY_POSITION = "position_ms"
+        private const val KEY_AUDIO_SESSION_ID = "audio_session_id"
     }
 }
