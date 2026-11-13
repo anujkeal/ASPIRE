@@ -188,6 +188,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var genres by remember { mutableStateOf(emptyList<GenreItem>()) }
     var loading by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Songs") }
+    var playingId by remember { mutableStateOf<Long?>(null) }
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     var selectedAlbum by remember { mutableStateOf<Long?>(null) }
@@ -217,6 +218,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
         else permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
     }
     LaunchedEffect(allowed) { if (allowed && songs.isEmpty()) scan() }
+    LaunchedEffect(listState.firstVisibleItemIndex, filtered) { filtered.getOrNull(listState.firstVisibleItemIndex)?.let { activeLetter = it.letter } }
 
     val albums = remember(songs) {
         songs.groupBy { it.albumId }.values.mapNotNull { group ->
@@ -293,9 +295,9 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
             }
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink.White) }
-            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, onPlay = { AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it })
+            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it })
             tab == "Songs" -> if (filtered.isEmpty()) EmptyResults(::scan) else Row(Modifier.fillMaxSize()) {
-                SongResults(filtered, listState, onPlay = { AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it }, Modifier.weight(1f))
+                SongResults(filtered, listState, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
                 AlphabetIndex(index.keys, activeLetter, onLetter = { letter ->
                     activeLetter = letter
                     bubble = letter
@@ -307,7 +309,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 }, onRelease = { bubble = null })
             }
             tab == "Albums" -> LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(albums, key = { it.id }) { album ->
+                items(albums.filter { query.isBlank() || it.name.contains(query, true) || it.artist.contains(query, true) }, key = { it.id }) { album ->
                     Column(Modifier.clickable { selectedAlbum = album.id }) {
                         ArtworkImage(album.art, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)))
                         Text(album.name, color = Ink.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
@@ -316,7 +318,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 }
             }
             tab == "Artists" -> LazyColumn {
-                items(artists, key = { it.name }) { artist ->
+                items(artists.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.name }) { artist ->
                     Row(Modifier.fillMaxWidth().height(76.dp).clickable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.Surface), contentAlignment = Alignment.Center) {
                             Text(artist.name.take(1).uppercase(), color = Ink.White, fontSize = 19.sp)
@@ -329,7 +331,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 }
             }
             else -> LazyColumn {
-                items(genres, key = { it.id }) { genre ->
+                items(genres.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.id }) { genre ->
                     Row(Modifier.fillMaxWidth().height(64.dp).clickable { selectedGenre = genre }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(genre.name, color = Ink.White, modifier = Modifier.weight(1f))
                         Text("${genre.count} songs", color = Ink.Grey, fontSize = 13.sp)
@@ -374,13 +376,13 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun SongResults(songs: List<AspireSong>, state: androidx.compose.foundation.lazy.LazyListState, onPlay: (AspireSong) -> Unit, onMenu: (AspireSong) -> Unit, modifier: Modifier = Modifier) {
+private fun SongResults(songs: List<AspireSong>, state: androidx.compose.foundation.lazy.LazyListState, currentSong: Long? = null, onPlay: (AspireSong) -> Unit, onMenu: (AspireSong) -> Unit, modifier: Modifier = Modifier) {
     LazyColumn(modifier = modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 24.dp)) {
         items(songs, key = { it.id }) { song ->
             Row(Modifier.fillMaxWidth().height(LibraryTuning.RowHeight).clickable { onPlay(song) }.padding(start = 25.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 ArtworkImage(song.art, Modifier.size(LibraryTuning.ArtSize).clip(RoundedCornerShape(LibraryTuning.ArtRadius)))
                 Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(song.title, color = Ink.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text(song.title, color = Ink.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)); if (song.id == currentSong) Text("  ▮▮", color = Ink.White, fontSize = 11.sp) }
                     Text(song.artist, color = Ink.Grey, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Text(song.durationText, color = Ink.Grey, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 10.dp))
