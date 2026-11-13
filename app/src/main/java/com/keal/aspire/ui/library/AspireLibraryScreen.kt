@@ -579,7 +579,7 @@ private fun SongResults(
         ) { song ->
             Row(
                 Modifier.fillMaxWidth()
-                    .height(LibraryTuning.RowHeight)
+                    .height(LibraryTuning.RowHeight - 1.dp)
                     .clickable { onPlay(song) }
                     .padding(start = 25.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
