@@ -211,12 +211,6 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
         denied = !granted
     }
 
-    val deleteLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) scan()
-    }
-
     fun scan() {
         scope.launch {
             loading = true
@@ -224,6 +218,12 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
             genres = LibraryData.genres(context)
             loading = false
         }
+    }
+
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) scan()
     }
 
     LaunchedEffect(Unit) {
