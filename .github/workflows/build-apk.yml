@@ -3,6 +3,7 @@ name: Build Aspire APK
 on:
   push:
     branches:
+      - main
       - feature/splash-screen
   workflow_dispatch:
 
@@ -16,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: feature/splash-screen
+          ref: ${{ github.ref }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
