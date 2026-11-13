@@ -143,10 +143,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
         mutableStateOf(FavoriteStore.contains(context, playback.mediaId))
     }
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
-    var sleepMinutes by remember { mutableStateOf<Int?>(null) }
-    var sleepEndOfSong by remember { mutableStateOf(false) }
-    var sleepRemainingMs by remember { mutableLongStateOf(0L) }
-    var sleepJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val sleepTimer by AspirePlaybackController.sleepTimer.collectAsStateWithLifecycle()
     var showInfo by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var screenDrag by remember { mutableFloatStateOf(0f) }
@@ -182,41 +179,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
         enterAlpha.animateTo(1f, tween(NowPlayingTuning.EntryDurationMs))
     }
 
-    LaunchedEffect(sleepMinutes, sleepEndOfSong) {
-        sleepJob?.cancel()
-        if (sleepMinutes != null) {
-            val total = sleepMinutes!!.toLong() * 60_000L
-            sleepJob = scope.launch {
-                val deadline = System.currentTimeMillis() + total
-                while (true) {
-                    val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0L)
-                    sleepRemainingMs = remaining
-                    if (remaining <= 0L) break
-                    delay(1_000L)
-                }
-                AspirePlaybackController.pause(context)
-                sleepMinutes = null
-                sleepEndOfSong = false
-                sleepRemainingMs = 0L
-            }
-        } else if (sleepEndOfSong) {
-            sleepJob = scope.launch {
-                val targetId = playback.mediaId
-                while (true) {
-                    val current = AspirePlaybackController.currentPosition()
-                    val duration = AspirePlaybackController.state.value.durationMs
-                    if (AspirePlaybackController.state.value.mediaId != targetId ||
-                        (duration > 0L && current >= duration - 250L)
-                    ) {
-                        AspirePlaybackController.pause(context)
-                        sleepEndOfSong = false
-                        break
-                    }
-                    delay(250L)
-                }
-            }
-        }
-    }
+
 
     BoxWithConstraints(
         Modifier.fillMaxSize()
@@ -387,8 +350,8 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                     PlayerGlyph.Timer,
                     Modifier.weight(1f),
                     label = when {
-                        sleepEndOfSong -> "End"
-                        sleepMinutes != null -> formatCountdown(sleepRemainingMs)
+                        sleepTimer.endOfSong -> "End"
+                        sleepTimer.remainingMs != null -> formatCountdown(sleepTimer.remainingMs!!)
                         else -> null
                     }
                 ) { sheet = PlayerSheet.Sleep }
@@ -430,20 +393,15 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                     onRemove = { AspirePlaybackController.removeQueueItem(context, it) }
                 )
                 PlayerSheet.Sleep -> SleepSheet(
-                    activeMinutes = sleepMinutes,
-                    endOfSong = sleepEndOfSong,
+                    activeMinutes = sleepTimer.durationMinutes,
+                    endOfSong = sleepTimer.endOfSong,
                     onSelect = { minutes ->
-                        sleepJob?.cancel()
-                        sleepEndOfSong = false
-                        sleepMinutes = minutes
-                        sleepRemainingMs = (minutes ?: 0).toLong() * 60_000L
-                        if (minutes == null) sleepRemainingMs = 0L
+                        if (minutes == null) AspirePlaybackController.cancelSleepTimer()
+                        else AspirePlaybackController.startSleepTimer(context, minutes.toLong() * 60_000L, false)
                         sheet = null
                     },
                     onEndOfSong = {
-                        sleepJob?.cancel()
-                        sleepMinutes = null
-                        sleepEndOfSong = true
+                        AspirePlaybackController.startSleepTimer(context, 0L, true)
                         sheet = null
                     }
                 )
