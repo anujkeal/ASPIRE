@@ -23,6 +23,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +65,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
+
+private object AspireLibraryScrollMemory { var firstVisibleIndex: Int = 0 }
 
 private object LibraryTuning {
     val RowHeight = 86.dp
@@ -198,7 +204,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var infoSong by remember { mutableStateOf<AspireSong?>(null) }
     var bubble by remember { mutableStateOf<String?>(null) }
     var activeLetter by remember { mutableStateOf("#") }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = AspireLibraryScrollMemory.firstVisibleIndex)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         allowed = granted
@@ -248,6 +254,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(listState.firstVisibleItemIndex, filtered) {
+        AspireLibraryScrollMemory.firstVisibleIndex = listState.firstVisibleItemIndex
         filtered.getOrNull(listState.firstVisibleItemIndex)?.let { activeLetter = it.letter }
     }
 
@@ -417,13 +424,45 @@ private fun SongResults(songs: List<AspireSong>, state: androidx.compose.foundat
             Row(Modifier.fillMaxWidth().height(LibraryTuning.RowHeight).clickable { onPlay(song) }.padding(start = 25.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 ArtworkImage(song.art, Modifier.size(LibraryTuning.ArtSize).clip(RoundedCornerShape(LibraryTuning.ArtRadius)))
                 Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text(song.title, color = Ink.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)); if (song.id == currentSong) Text("  ▮▮", color = Ink.White, fontSize = 11.sp) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text(song.title, color = Ink.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)); if (song.id == currentSong) PlayingEqualizer() }
                     Text(song.artist, color = Ink.Grey, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Text(song.durationText, color = Ink.Grey, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 10.dp))
                 Text("⋮", color = Ink.White, fontSize = 25.sp, modifier = Modifier.clickable { onMenu(song) }.padding(horizontal = 4.dp))
             }
             Spacer(Modifier.padding(start = 95.dp, end = 48.dp).fillMaxWidth().height(1.dp).background(Ink.Divider))
+        }
+    }
+}
+
+@Composable
+private fun PlayingEqualizer() {
+    val transition = rememberInfiniteTransition(label = "playing-equalizer")
+    val first by transition.animateFloat(
+        initialValue = 4f, targetValue = 13f,
+        animationSpec = infiniteRepeatable(tween(360), repeatMode = RepeatMode.Reverse),
+        label = "bar-one"
+    )
+    val second by transition.animateFloat(
+        initialValue = 12f, targetValue = 5f,
+        animationSpec = infiniteRepeatable(tween(430), repeatMode = RepeatMode.Reverse),
+        label = "bar-two"
+    )
+    val third by transition.animateFloat(
+        initialValue = 6f, targetValue = 14f,
+        animationSpec = infiniteRepeatable(tween(310), repeatMode = RepeatMode.Reverse),
+        label = "bar-three"
+    )
+    Row(
+        Modifier.padding(start = 7.dp, end = 4.dp).height(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        listOf(first, second, third).forEach { barHeight ->
+            Box(
+                Modifier.width(2.dp).height(barHeight.dp)
+                    .clip(RoundedCornerShape(2.dp)).background(Ink.White)
+            )
         }
     }
 }
