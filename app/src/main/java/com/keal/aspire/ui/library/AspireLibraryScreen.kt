@@ -475,7 +475,7 @@ private fun SongResults(
                 val bottomStop = (1f - bottomFadePx / size.height).coerceIn(topStop + 0.05f, 1f)
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colorStops = arrayOf(
+                        *arrayOf(
                             0f to Color.Transparent,
                             topStop to Color.Black,
                             bottomStop to Color.Black,
