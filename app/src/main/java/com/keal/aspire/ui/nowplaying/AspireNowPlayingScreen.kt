@@ -137,12 +137,8 @@ private enum class PlayerGlyph {
 @Composable
 fun AspireNowPlayingScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val playback by AspirePlaybackController.state.collectAsStateWithLifecycle()
-    var positionMs by remember { mutableLongStateOf(AspirePlaybackController.currentPosition()) }
-    var isSeeking by remember { mutableStateOf(false) }
-    var seekDraft by remember { mutableFloatStateOf(0f) }
     var favorite by remember(playback.mediaId) {
         mutableStateOf(FavoriteStore.contains(context, playback.mediaId))
     }
@@ -186,15 +182,6 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
         enterAlpha.animateTo(1f, tween(NowPlayingTuning.EntryDurationMs))
     }
 
-    LaunchedEffect(lifecycleOwner, playback.mediaId, playback.isPlaying, isSeeking) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                if (!isSeeking) positionMs = AspirePlaybackController.currentPosition()
-                delay(250L)
-            }
-        }
-    }
-
     LaunchedEffect(sleepMinutes, sleepEndOfSong) {
         sleepJob?.cancel()
         if (sleepMinutes != null) {
@@ -230,11 +217,6 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
             }
         }
     }
-
-    val duration = playback.durationMs.coerceAtLeast(1L)
-    val shownPosition = if (isSeeking) seekDraft.toLong() else positionMs
-    val currentTime = formatTime(shownPosition)
-    val totalTime = formatTime(playback.durationMs)
 
     BoxWithConstraints(
         Modifier.fillMaxSize()
@@ -351,33 +333,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                 )
             }
 
-            Column(Modifier.fillMaxWidth()) {
-                Slider(
-                    value = shownPosition.toFloat().coerceIn(0f, duration.toFloat()),
-                    onValueChange = {
-                        isSeeking = true
-                        seekDraft = it
-                    },
-                    onValueChangeFinished = {
-                        AspirePlaybackController.seekTo(context, seekDraft.toLong())
-                        positionMs = seekDraft.toLong()
-                        isSeeking = false
-                    },
-                    valueRange = 0f..duration.toFloat(),
-                    modifier = Modifier.fillMaxWidth().height(28.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = PlayerInk.White,
-                        activeTrackColor = PlayerInk.White,
-                        inactiveTrackColor = PlayerInk.Track,
-                        activeTickColor = Color.Transparent,
-                        inactiveTickColor = Color.Transparent
-                    )
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(currentTime, color = PlayerInk.Grey, fontSize = 14.sp)
-                    Text(totalTime, color = PlayerInk.Grey, fontSize = 14.sp)
-                }
-            }
+            NowPlayingSeekControls(playback.durationMs)
 
             Row(
                 Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 8.dp),
@@ -519,6 +475,54 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
             },
             confirmButton = { TextButton(onClick = { showInfo = false }) { Text("Close", color = PlayerInk.White) } }
         )
+    }
+}
+
+@Composable
+private fun NowPlayingSeekControls(durationMs: Long) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var positionMs by remember { mutableLongStateOf(AspirePlaybackController.currentPosition()) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekDraft by remember { mutableFloatStateOf(0f) }
+    val duration = durationMs.coerceAtLeast(1L)
+
+    LaunchedEffect(lifecycleOwner, durationMs, isSeeking) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                if (!isSeeking) positionMs = AspirePlaybackController.currentPosition()
+                delay(250L)
+            }
+        }
+    }
+
+    val shownPosition = if (isSeeking) seekDraft.toLong() else positionMs
+    Column(Modifier.fillMaxWidth()) {
+        Slider(
+            value = shownPosition.toFloat().coerceIn(0f, duration.toFloat()),
+            onValueChange = {
+                isSeeking = true
+                seekDraft = it
+            },
+            onValueChangeFinished = {
+                AspirePlaybackController.seekTo(context, seekDraft.toLong())
+                positionMs = seekDraft.toLong()
+                isSeeking = false
+            },
+            valueRange = 0f..duration.toFloat(),
+            modifier = Modifier.fillMaxWidth().height(28.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = PlayerInk.White,
+                activeTrackColor = PlayerInk.White,
+                inactiveTrackColor = PlayerInk.Track,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent
+            )
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(formatTime(shownPosition), color = PlayerInk.Grey, fontSize = 14.sp)
+            Text(formatTime(durationMs), color = PlayerInk.Grey, fontSize = 14.sp)
+        }
     }
 }
 
