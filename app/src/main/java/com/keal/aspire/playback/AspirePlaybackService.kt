@@ -41,6 +41,7 @@ class AspirePlaybackService : MediaSessionService() {
                 true
             )
             setHandleAudioBecomingNoisy(true)
+            setWakeMode(C.WAKE_MODE_LOCAL)
             repeatMode = Player.REPEAT_MODE_OFF
         }
         mediaSession = MediaSession.Builder(this, player).build()
