@@ -329,7 +329,7 @@ private fun DottedMountainWave(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun AspireHomeScreen() {
+fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var selectedDestination by remember { mutableStateOf<String?>(null) }
@@ -396,7 +396,7 @@ fun AspireHomeScreen() {
                     selectedDestination = "Now Playing"
                 }
                 HomeActionCard(Modifier.weight(1f).height(cardHeight), HomeIcon.Music, "Library", libraryCounts.songs.formatted("Songs")) {
-                    selectedDestination = "Library"
+                    onOpenLibrary()
                 }
             }
             Spacer(Modifier.height(16.dp))
