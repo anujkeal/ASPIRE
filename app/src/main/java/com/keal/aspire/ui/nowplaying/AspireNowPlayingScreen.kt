@@ -143,7 +143,6 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
         mutableStateOf(FavoriteStore.contains(context, playback.mediaId))
     }
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
-    val sleepTimer by AspirePlaybackController.sleepTimer.collectAsStateWithLifecycle()
     var showInfo by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var screenDrag by remember { mutableFloatStateOf(0f) }
@@ -346,15 +345,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                         .onFailure { Toast.makeText(context, "No equalizer is installed", Toast.LENGTH_SHORT).show() }
                 }
                 BottomPill(PlayerGlyph.Queue, Modifier.weight(1f)) { sheet = PlayerSheet.Queue }
-                BottomPill(
-                    PlayerGlyph.Timer,
-                    Modifier.weight(1f),
-                    label = when {
-                        sleepTimer.endOfSong -> "End"
-                        sleepTimer.remainingMs != null -> formatCountdown(sleepTimer.remainingMs!!)
-                        else -> null
-                    }
-                ) { sheet = PlayerSheet.Sleep }
+                SleepTimerPill(Modifier.weight(1f)) { sheet = PlayerSheet.Sleep }
                 BottomPill(PlayerGlyph.More, Modifier.weight(1f)) { sheet = PlayerSheet.More }
             }
         }
@@ -393,8 +384,6 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                     onRemove = { AspirePlaybackController.removeQueueItem(context, it) }
                 )
                 PlayerSheet.Sleep -> SleepSheet(
-                    activeMinutes = sleepTimer.durationMinutes,
-                    endOfSong = sleepTimer.endOfSong,
                     onSelect = { minutes ->
                         if (minutes == null) AspirePlaybackController.cancelSleepTimer()
                         else AspirePlaybackController.startSleepTimer(context, minutes.toLong() * 60_000L, false)
@@ -674,6 +663,17 @@ private fun PlayerGlyphIcon(glyph: PlayerGlyph, modifier: Modifier = Modifier, t
 }
 
 @Composable
+private fun SleepTimerPill(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val timer by AspirePlaybackController.sleepTimer.collectAsStateWithLifecycle()
+    val label = when {
+        timer.endOfSong -> "End"
+        timer.remainingMs != null -> formatCountdown(timer.remainingMs)
+        else -> null
+    }
+    BottomPill(PlayerGlyph.Timer, modifier, label, onClick)
+}
+
+@Composable
 private fun QueueSheet(
     playback: AspirePlaybackState,
     onPlay: (Int) -> Unit,
@@ -729,11 +729,12 @@ private fun QueueSheet(
 
 @Composable
 private fun SleepSheet(
-    activeMinutes: Int?,
-    endOfSong: Boolean,
     onSelect: (Int?) -> Unit,
     onEndOfSong: () -> Unit
 ) {
+    val timer by AspirePlaybackController.sleepTimer.collectAsStateWithLifecycle()
+    val activeMinutes = timer.durationMinutes
+    val endOfSong = timer.endOfSong
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 30.dp)) {
         Text("Sleep timer", color = PlayerInk.White, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
