@@ -227,10 +227,16 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) {
-        if (allowed) scan()
-        else permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (!allowed) {
+            permissionLauncher.launch(
+                if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
+                else Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+        }
     }
-    LaunchedEffect(allowed) { if (allowed && songs.isEmpty()) scan() }
+    LaunchedEffect(allowed) {
+        if (allowed && songs.isEmpty()) scan()
+    }
     val albums = remember(songs) {
         songs.groupBy { it.albumId }.values.mapNotNull { group ->
             group.firstOrNull()?.let { AlbumItem(it.albumId, it.album, it.artist, it.art) }
