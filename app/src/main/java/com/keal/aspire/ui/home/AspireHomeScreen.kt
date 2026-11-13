@@ -123,6 +123,8 @@ private class TerrainField {
     private val ripples = ArrayList<TerrainRipple>(8)
     var frame by mutableStateOf(0)
         private set
+    var currentTimeNanos: Long = 0L
+        private set
 
     fun resize(w: Float, h: Float) {
         if (w == width && h == height && count > 0) return
@@ -173,6 +175,7 @@ private class TerrainField {
     }
 
     fun update(dtRaw: Float, timeNanos: Long) {
+        currentTimeNanos = timeNanos
         val dt = dtRaw.coerceIn(1f / 240f, 1f / 30f)
         for (i in ripples.indices) ripples[i].age += dt
         ripples.removeAll { it.age > 1.25f }
@@ -321,7 +324,7 @@ private fun DottedMountainWave(modifier: Modifier = Modifier) {
     ) {
         field.resize(size.width, size.height)
         val ignored = field.frame
-        field.draw(this, androidx.compose.runtime.MonotonicFrameClock::class.hashCode().toLong() + ignored)
+        field.draw(this, field.currentTimeNanos)
     }
 }
 
@@ -357,7 +360,7 @@ fun AspireHomeScreen() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {
                 lastPlayed = AspireLastPlayedStore.read(context)
-                if (hasAudioReadPermission()) {
+                if (hasAudioReadPermission(context)) {
                     hasAudioPermission = true
                 }
             }
@@ -595,9 +598,10 @@ private fun AspireIcon(kind: HomeIcon, modifier: Modifier = Modifier, stroke: Fl
     }
 }
 
-private fun hasAudioReadPermission(): Boolean {
-    val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
-    return ContextCompat.checkSelfPermission(AppContextHolder.context ?: return false, permission) == PackageManager.PERMISSION_GRANTED
+private fun hasAudioReadPermission(context: android.content.Context): Boolean {
+    val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
+        else Manifest.permission.READ_EXTERNAL_STORAGE
+    return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 }
 
 /** Counts are read from MediaStore; no demo values are displayed. */
