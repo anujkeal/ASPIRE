@@ -1,28 +1,18 @@
 package com.keal.aspire.ui.splash
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,22 +32,10 @@ private val Muted = Color(0xFFB8B8B8)
 
 @Composable
 fun AspireSplashScreen() {
-    val transition = rememberInfiniteTransition(label = "splash-progress")
-    val progress by transition.animateFloat(
-        initialValue = 0.28f,
-        targetValue = 0.72f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "progress"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+            .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
         Box(
@@ -81,7 +59,7 @@ fun AspireSplashScreen() {
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(bottom = 78.dp),
+                    .padding(bottom = 42.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 DotMatrixA(
@@ -105,29 +83,6 @@ fun AspireSplashScreen() {
                     fontSize = 23.sp,
                     fontWeight = FontWeight.Light,
                     letterSpacing = 0.1.sp
-                )
-            }
-
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp)
-                    .fillMaxWidth(0.42f)
-                    .height(4.dp)
-            ) {
-                drawLine(
-                    color = Color(0xFF3A3A3A),
-                    start = androidx.compose.ui.geometry.Offset(0f, size.height / 2),
-                    end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2),
-                    strokeWidth = size.height,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = White,
-                    start = androidx.compose.ui.geometry.Offset(0f, size.height / 2),
-                    end = androidx.compose.ui.geometry.Offset(size.width * progress, size.height / 2),
-                    strokeWidth = size.height,
-                    cap = StrokeCap.Round
                 )
             }
 
