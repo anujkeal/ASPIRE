@@ -84,7 +84,7 @@ private object TerrainTuning {
     const val COLUMNS = 66
     const val ROWS = 27
     const val WAVE_HEIGHT = 31f
-    const val WAVE_SPEED = 0.00034f
+    const val WAVE_SPEED = 0.72f
     const val DOT_SPACING_HINT = 5.2f
     const val INFLUENCE_RADIUS = 104f
     const val PUSH_STRENGTH = 1500f
@@ -181,7 +181,7 @@ private class TerrainField {
         ripples.removeAll { it.age > 1.25f }
         val radius = TerrainTuning.INFLUENCE_RADIUS
         val radius2 = radius * radius
-        val t = timeNanos.toFloat() * TerrainTuning.WAVE_SPEED
+        val t = (timeNanos / 1_000_000_000f) * TerrainTuning.WAVE_SPEED
 
         for (i in 0 until count) {
             var fx = 0f
