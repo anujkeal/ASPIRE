@@ -296,7 +296,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var menuSong by remember { mutableStateOf<AspireSong?>(null) }
     var infoSong by remember { mutableStateOf<AspireSong?>(null) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = AspireLibraryScrollMemory.firstVisibleIndex)
-    val entranceProgress = remember { Animatable(1f) }
+    val entranceProgress = remember { Animatable(0f) }
     var initialEntranceStarted by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
