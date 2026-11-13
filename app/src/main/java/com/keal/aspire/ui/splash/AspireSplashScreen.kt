@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -461,12 +462,13 @@ private fun InteractiveParticleWave(modifier: Modifier = Modifier) {
     Canvas(
         modifier = modifier.pointerInput(field) {
             awaitEachGesture {
-                awaitPointerEventScope {
-                    do {
-                        val event = awaitPointerEvent()
-                        field.updateTouches(event.changes, event.changes.firstOrNull()?.uptimeMillis ?: 0L)
-                    } while (event.changes.any { it.pressed })
-                }
+                do {
+                    val event = awaitPointerEvent()
+                    field.updateTouches(
+                        event.changes,
+                        event.changes.firstOrNull()?.uptimeMillis ?: 0L
+                    )
+                } while (event.changes.any { it.pressed })
             }
         }
     ) {
