@@ -23,10 +23,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import androidx.compose.ui.graphics.BlendMode
@@ -51,6 +53,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,6 +100,9 @@ private object LibraryTuning {
     const val TabAnimationMs = 200
     const val AlphabetIdleMs = 2_000L
     const val BubbleReleaseMs = 400L
+    const val RowStaggerMs = 20L
+    const val RowEntranceMs = 220
+    const val RowEntranceTotalMs = 360
     const val HapticMs = 10L
     const val SpringStiffness = 420f
     const val SpringDamping = 0.78f
@@ -290,6 +296,8 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var menuSong by remember { mutableStateOf<AspireSong?>(null) }
     var infoSong by remember { mutableStateOf<AspireSong?>(null) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = AspireLibraryScrollMemory.firstVisibleIndex)
+    val entranceProgress = remember { Animatable(1f) }
+    var initialEntranceStarted by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         allowed = granted
@@ -321,6 +329,13 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(allowed) {
         if (allowed && songs.isEmpty()) scan()
+    }
+    LaunchedEffect(songs.isNotEmpty()) {
+        if (songs.isNotEmpty() && !initialEntranceStarted) {
+            initialEntranceStarted = true
+            entranceProgress.snapTo(0f)
+            entranceProgress.animateTo(1f, tween(LibraryTuning.RowEntranceTotalMs))
+        }
     }
     val albums = remember(songs) {
         songs.groupBy { it.albumId }.values.mapNotNull { group ->
@@ -419,9 +434,9 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
             }
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink.White) }
-            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it })
+            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it })
             tab == "Songs" -> if (filtered.isEmpty()) EmptyResults(::scan) else Row(Modifier.fillMaxSize()) {
-                SongResults(filtered, listState, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
+                SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
                 AlphabetIndex(
                     songs = filtered,
                     state = listState,
@@ -523,6 +538,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
 private fun SongResults(
     songs: List<AspireSong>,
     state: androidx.compose.foundation.lazy.LazyListState,
+    entranceProgress: Animatable<Float, *>,
     currentSong: Long? = null,
     onPlay: (AspireSong) -> Unit,
     onMenu: (AspireSong) -> Unit,
@@ -572,14 +588,23 @@ private fun SongResults(
             bottom = LibraryTuning.SongListBottomPadding
         )
     ) {
-        items(
+        itemsIndexed(
             items = songs,
-            key = { it.id },
-            contentType = { "song-row" }
-        ) { song ->
+            key = { _, song -> song.id },
+            contentType = { _, _ -> "song-row" }
+        ) { index, song ->
             Row(
                 Modifier.fillMaxWidth()
                     .height(LibraryTuning.RowHeight - 1.dp)
+                    .then(
+                        if (index < 8) Modifier.graphicsLayer {
+                            val elapsed = entranceProgress.value * LibraryTuning.RowEntranceTotalMs
+                            val progress = ((elapsed - index * LibraryTuning.RowStaggerMs) /
+                                LibraryTuning.RowEntranceMs).coerceIn(0f, 1f)
+                            alpha = progress
+                            translationY = (1f - progress) * 12.dp.toPx()
+                        } else Modifier
+                    )
                     .clickable { onPlay(song) }
                     .padding(start = 25.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -727,12 +752,16 @@ private fun AlphabetIndex(
             .collect { activeLetter = it }
     }
     LaunchedEffect(state, dragging) {
-        if (state.isScrollInProgress || dragging) {
-            idle = false
-        } else {
-            delay(LibraryTuning.AlphabetIdleMs)
-            idle = true
-        }
+        snapshotFlow { state.isScrollInProgress || dragging }
+            .distinctUntilChanged()
+            .collectLatest { active ->
+                if (active) {
+                    idle = false
+                } else {
+                    delay(LibraryTuning.AlphabetIdleMs)
+                    idle = true
+                }
+            }
     }
     LaunchedEffect(dragging, bubbleLetter) {
         if (!dragging && bubbleLetter != null) {
