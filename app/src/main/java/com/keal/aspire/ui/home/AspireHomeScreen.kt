@@ -329,7 +329,7 @@ private fun DottedMountainWave(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}) {
+fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}, onOpenNowPlaying: () -> Unit = {}) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var selectedDestination by remember { mutableStateOf<String?>(null) }
@@ -338,6 +338,8 @@ fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}) {
     var libraryCounts by remember { mutableStateOf(LibraryCounts()) }
     var hasAudioPermission by remember { mutableStateOf(hasAudioReadPermission(context)) }
     var lastPlayed by remember { mutableStateOf(AspireLastPlayedStore.read(context)) }
+    val playback by AspirePlaybackController.state.collectAsStateWithLifecycle()
+    val currentTrack = playback.mediaId?.let { SavedTrack(it, playback.title, playback.artist, playback.albumId, playback.isPlaying) } ?: lastPlayed
 
     fun permissionName(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
         else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -393,7 +395,7 @@ fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}) {
             val cardHeight = 154.dp
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 HomeActionCard(Modifier.weight(1f).height(cardHeight), HomeIcon.Play, "Now Playing", "Continue") {
-                    selectedDestination = "Now Playing"
+                    onOpenNowPlaying()
                 }
                 HomeActionCard(Modifier.weight(1f).height(cardHeight), HomeIcon.Music, "Library", libraryCounts.songs.formatted("Songs")) {
                     onOpenLibrary()
@@ -412,18 +414,15 @@ fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}) {
             Spacer(Modifier.weight(1f))
 
             AnimatedVisibility(
-                visible = lastPlayed != null,
+                visible = currentTrack != null,
                 enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)) + fadeIn(tween(300))
             ) {
-                lastPlayed?.let { track ->
+                currentTrack?.let { track ->
                     MiniPlayer(
                         track = track,
-                        onClick = { selectedDestination = "Now Playing" },
+                        onClick = onOpenNowPlaying,
                         onPlayPause = {
-                            // This records the UI playback intent; the playback service can
-                            // consume the same persisted state when Media3 is connected.
-                            AspireLastPlayedStore.setPlaying(context, !track.isPlaying)
-                            lastPlayed = AspireLastPlayedStore.read(context)
+                            AspirePlaybackController.togglePlayPause(context)
                         }
                     )
                 }
