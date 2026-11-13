@@ -665,9 +665,10 @@ private fun PlayerGlyphIcon(glyph: PlayerGlyph, modifier: Modifier = Modifier, t
 @Composable
 private fun SleepTimerPill(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val timer by AspirePlaybackController.sleepTimer.collectAsStateWithLifecycle()
+    val remaining = timer.remainingMs
     val label = when {
         timer.endOfSong -> "End"
-        timer.remainingMs != null -> formatCountdown(timer.remainingMs)
+        remaining != null -> formatCountdown(remaining)
         else -> null
     }
     BottomPill(PlayerGlyph.Timer, modifier, label, onClick)
