@@ -327,6 +327,11 @@ private class InteractiveDotField {
 
         for (ripple in ripples) ripple.age += dt
         ripples.removeAll { it.age > 1.15f }
+        for (touch in touches.values) {
+            val velocityFade = kotlin.math.exp(-8f * dt)
+            touch.velocityX *= velocityFade
+            touch.velocityY *= velocityFade
+        }
 
         var anyMoving = false
         for (i in 0 until dotCount) {
@@ -374,8 +379,10 @@ private class InteractiveDotField {
                 }
             }
 
-            influence[i] = localInfluence
-            rippleGlow[i] = localRipple
+            // Ease visual energy out after the finger leaves instead of snapping dots dim.
+            val visualEase = (dt * 13f).coerceIn(0f, 1f)
+            influence[i] += (localInfluence - influence[i]) * visualEase
+            rippleGlow[i] += (localRipple - rippleGlow[i]) * visualEase
 
             val ax = pushX - spring * offsetX[i] - damping * velocityX[i]
             val ay = pushY - spring * offsetY[i] - damping * velocityY[i]
@@ -384,7 +391,9 @@ private class InteractiveDotField {
             offsetX[i] += velocityX[i] * dt
             offsetY[i] += velocityY[i] * dt
 
-            if (abs(offsetX[i]) + abs(offsetY[i]) + abs(velocityX[i]) + abs(velocityY[i]) > 0.08f) {
+            if (abs(offsetX[i]) + abs(offsetY[i]) + abs(velocityX[i]) + abs(velocityY[i]) > 0.08f ||
+                influence[i] > 0.004f || rippleGlow[i] > 0.004f
+            ) {
                 anyMoving = true
             } else {
                 offsetX[i] = 0f
@@ -419,7 +428,9 @@ private class InteractiveDotField {
 
     private fun hasDisplacedDots(): Boolean {
         for (i in 0 until dotCount) {
-            if (abs(offsetX[i]) + abs(offsetY[i]) + abs(velocityX[i]) + abs(velocityY[i]) > 0.08f) {
+            if (abs(offsetX[i]) + abs(offsetY[i]) + abs(velocityX[i]) + abs(velocityY[i]) > 0.08f ||
+                influence[i] > 0.004f || rippleGlow[i] > 0.004f
+            ) {
                 return true
             }
         }
