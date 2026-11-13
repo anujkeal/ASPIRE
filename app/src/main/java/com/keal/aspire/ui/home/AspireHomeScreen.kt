@@ -336,7 +336,7 @@ fun AspireHomeScreen() {
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var libraryCounts by remember { mutableStateOf(LibraryCounts()) }
-    var hasAudioPermission by remember { mutableStateOf(hasAudioReadPermission()) }
+    var hasAudioPermission by remember { mutableStateOf(hasAudioReadPermission(context)) }
     var lastPlayed by remember { mutableStateOf(AspireLastPlayedStore.read(context)) }
 
     fun permissionName(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
