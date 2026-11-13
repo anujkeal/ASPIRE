@@ -12,6 +12,15 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.keal.aspire.ui.library.AspireSong
+import android.os.SystemClock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +34,8 @@ data class AspireQueueEntry(
     val uri: Uri,
     val artworkUri: Uri?
 )
+
+data class AspireSleepTimerState(val remainingMs: Long? = null, val durationMinutes: Int? = null, val endOfSong: Boolean = false)
 
 data class AspirePlaybackState(
     val mediaId: Long? = null,
@@ -49,6 +60,10 @@ data class AspirePlaybackState(
 object AspirePlaybackController {
     private val mutableState = MutableStateFlow(AspirePlaybackState())
     val state: StateFlow<AspirePlaybackState> = mutableState.asStateFlow()
+    private val mutableSleepTimer = MutableStateFlow(AspireSleepTimerState())
+    val sleepTimer: StateFlow<AspireSleepTimerState> = mutableSleepTimer.asStateFlow()
+    private val timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var sleepTimerJob: Job? = null
 
     @Volatile private var controller: MediaController? = null
     private var connection: ListenableFuture<MediaController>? = null
@@ -114,6 +129,49 @@ object AspirePlaybackController {
 
     fun currentPosition(): Long = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
     fun audioSessionId(context: Context): Int = context.getSharedPreferences("aspire_last_played", Context.MODE_PRIVATE).getInt("audio_session_id", 0)
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        mutableSleepTimer.value = AspireSleepTimerState()
+    }
+
+    fun startSleepTimer(context: Context, durationMs: Long, endOfSong: Boolean) {
+        cancelSleepTimer()
+        if (endOfSong) {
+            val targetMediaId = state.value.mediaId
+            mutableSleepTimer.value = AspireSleepTimerState(endOfSong = true)
+            sleepTimerJob = timerScope.launch {
+                while (isActive) {
+                    val current = state.value
+                    if (current.mediaId != targetMediaId ||
+                        (current.durationMs > 0L && currentPosition() >= current.durationMs - 250L)
+                    ) {
+                        pause(context)
+                        mutableSleepTimer.value = AspireSleepTimerState()
+                        break
+                    }
+                    delay(250L)
+                }
+            }
+        } else if (durationMs > 0L) {
+            val minutes = (durationMs / 60_000L).toInt()
+            val deadline = SystemClock.elapsedRealtime() + durationMs
+            mutableSleepTimer.value = AspireSleepTimerState(durationMs, minutes, false)
+            sleepTimerJob = timerScope.launch {
+                while (isActive) {
+                    val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                    mutableSleepTimer.value = AspireSleepTimerState(remaining, minutes, false)
+                    if (remaining <= 0L) {
+                        pause(context)
+                        mutableSleepTimer.value = AspireSleepTimerState()
+                        break
+                    }
+                    delay(1_000L)
+                }
+            }
+        }
+    }
 
     fun setShuffle(context: Context, enabled: Boolean) {
         withController(context) { it.shuffleModeEnabled = enabled }
