@@ -113,7 +113,7 @@ object AspirePlaybackController {
     }
 
     fun currentPosition(): Long = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-    fun audioSessionId(): Int = controller?.audioSessionId ?: 0
+    fun audioSessionId(context: Context): Int = context.getSharedPreferences("aspire_playback", Context.MODE_PRIVATE).getInt("audio_session_id", 0)
 
     fun setShuffle(context: Context, enabled: Boolean) {
         withController(context) { it.shuffleModeEnabled = enabled }
