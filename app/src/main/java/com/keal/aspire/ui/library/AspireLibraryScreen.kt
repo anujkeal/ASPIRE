@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Bitmap
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -433,7 +432,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
             tab == "Albums" -> LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(albums.filter { query.isBlank() || it.name.contains(query, true) || it.artist.contains(query, true) }, key = { it.id }) { album ->
                     Column(Modifier.clickable { selectedAlbum = album.id }) {
-                        ArtworkImage(album.art, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)))
+                        ArtworkImage(album.art, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)), targetSizeDp = 240.dp)
                         Text(album.name, color = Ink.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                         Text(album.artist, color = Ink.Grey, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -443,7 +442,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 items(artists.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.name }) { artist ->
                     Row(Modifier.fillMaxWidth().height(76.dp).clickable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.Surface), contentAlignment = Alignment.Center) {
-                            ArtworkImage(artist.artwork, Modifier.fillMaxSize().clip(CircleShape))
+                            ArtworkImage(artist.artwork, Modifier.fillMaxSize().clip(CircleShape), targetSizeDp = 48.dp)
                         }
                         Column(Modifier.padding(start = 14.dp)) {
                             Text(artist.name, color = Ink.White, fontWeight = FontWeight.Medium)
