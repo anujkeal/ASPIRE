@@ -18,6 +18,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,6 +57,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -129,7 +133,7 @@ private enum class PlayerGlyph {
     Back, Cast, Heart, More, Shuffle, Previous, Play, Pause, Next, Repeat, Equalizer, Queue, Timer
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AspireNowPlayingScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -578,10 +582,18 @@ private fun PlayerIconButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(NowPlayingTuning.PressDurationMs),
+        label = "player-button-press"
+    )
     Box(
-        modifier.size(size).clip(CircleShape)
+        modifier.size(size).graphicsLayer { scaleX = pressScale; scaleY = pressScale }
+            .clip(CircleShape)
             .background(if (filled) PlayerInk.White else Color.Transparent)
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         PlayerGlyphIcon(glyph, Modifier.size(if (filled) size * 0.42f else size * 0.72f), tint)
@@ -597,12 +609,20 @@ private fun PlayerIconButton(
 
 @Composable
 private fun BottomPill(glyph: PlayerGlyph, modifier: Modifier = Modifier, label: String? = null, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(NowPlayingTuning.PressDurationMs),
+        label = "player-pill-press"
+    )
     Row(
         modifier.height(NowPlayingTuning.BottomPillHeight)
+            .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
             .clip(RoundedCornerShape(NowPlayingTuning.BottomPillRadius))
             .background(Color(0xFF101010))
             .border(1.dp, PlayerInk.Border, RoundedCornerShape(NowPlayingTuning.BottomPillRadius))
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
