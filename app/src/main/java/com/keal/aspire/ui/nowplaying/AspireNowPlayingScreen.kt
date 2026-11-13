@@ -195,7 +195,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(sleepMinutes, sleepEndOfSong, playback.mediaId) {
+    LaunchedEffect(sleepMinutes, sleepEndOfSong) {
         sleepJob?.cancel()
         if (sleepMinutes != null) {
             val total = sleepMinutes!!.toLong() * 60_000L
@@ -421,7 +421,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
             ) {
                 BottomPill(PlayerGlyph.Equalizer, Modifier.weight(1f)) {
                     val intent = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
-                        putExtra(AudioEffect.EXTRA_AUDIO_SESSION, AspirePlaybackController.audioSessionId())
+                        putExtra(AudioEffect.EXTRA_AUDIO_SESSION, AspirePlaybackController.audioSessionId(context))
                     }
                     runCatching { context.startActivity(intent) }
                         .onFailure { Toast.makeText(context, "No equalizer is installed", Toast.LENGTH_SHORT).show() }
