@@ -59,7 +59,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.keal.aspire.AspireLastPlayedStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -169,10 +168,9 @@ object AspireAudioPlayer {
             player = MediaPlayer().apply {
                 setDataSource(context, song.uri)
                 setOnPreparedListener { it.start() }
-                setOnCompletionListener { AspireLastPlayedStore.setPlaying(context, false); playNext(context) }
+                setOnCompletionListener { playNext(context) }
                 prepareAsync()
             }
-            AspireLastPlayedStore.saveLastPlayed(context, song.id, song.title, song.artist, song.albumId, true)
         }
     }
     fun playNext(song: AspireSong) { queue.addFirst(song) }
@@ -194,7 +192,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var genres by remember { mutableStateOf(emptyList<GenreItem>()) }
     var loading by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Songs") }
-    var playingId by remember { mutableStateOf(AspireLastPlayedStore.read(context)?.mediaId) }
+    var playingId by remember { mutableStateOf<Long?>(null) }
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     var selectedAlbum by remember { mutableStateOf<Long?>(null) }
