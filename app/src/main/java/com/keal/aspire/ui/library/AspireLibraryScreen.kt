@@ -630,6 +630,9 @@ private fun AlphabetIndex(
     onLetter: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val bubbleSizePx = with(density) { LibraryTuning.AlphabetBubbleSize.toPx() }
+    val bubbleLeftPx = with(density) { (LibraryTuning.AlphabetBubbleSize + 12.dp).roundToPx() }
     val letters = remember { listOf("#") + ('A'..'Z').map { it.toString() } }
     var dragging by remember { mutableStateOf(false) }
     var bubbleLetter by remember { mutableStateOf<String?>(null) }
@@ -752,10 +755,10 @@ private fun AlphabetIndex(
             }
         }
         if (bubbleLetter != null) {
-            val bubbleY = (fingerY - with(androidx.compose.ui.platform.LocalDensity.current) { LibraryTuning.AlphabetBubbleSize.toPx() / 2f })
-                .coerceIn(0f, (constraints.maxHeight - with(androidx.compose.ui.platform.LocalDensity.current) { LibraryTuning.AlphabetBubbleSize.toPx() }).coerceAtLeast(0f))
+            val bubbleY = (fingerY - bubbleSizePx / 2f)
+                .coerceIn(0f, (constraints.maxHeight - bubbleSizePx).coerceAtLeast(0f))
             Box(
-                Modifier.offset { IntOffset(-with(androidx.compose.ui.platform.LocalDensity.current) { (LibraryTuning.AlphabetBubbleSize + 12.dp).roundToPx() }, bubbleY.roundToInt()) }
+                Modifier.offset { IntOffset(-bubbleLeftPx, bubbleY.roundToInt()) }
                     .size(LibraryTuning.AlphabetBubbleSize)
                     .clip(RoundedCornerShape(22.dp))
                     .background(Color(0xE61C1C1C))
