@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -23,22 +24,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.IntOffset
-import kotlinx.coroutines.delay
-import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.RepeatMode
@@ -47,6 +42,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -89,19 +85,17 @@ private object LibraryTuning {
     val ArtRadius = 11.dp
     val ChipHeight = 42.dp
     val AlphabetFontSize = 11.sp
-    val TopFadeHeight = 54.dp
-    val BottomFadeHeight = 76.dp
-    val RowEdgeScale = 0.06f
-    val RowEdgeAlpha = 0.48f
+    val TopFadeHeight = 48.dp
+    val BottomFadeHeight = 64.dp
     val AlphabetTouchWidth = 40.dp
     val AlphabetBubbleSize = 72.dp
     val AlphabetMagnifierRadius = 2.4f
     val AlphabetMagnifierScale = 0.52f
     val AlphabetMagnifierShift = 15.dp
+    val SongListTopPadding = 8.dp
+    val SongListBottomPadding = 88.dp
+    val ArtThumbnailSize = 112
     const val TabAnimationMs = 200
-    const val RowAnimationMs = 220
-    const val RowStaggerMs = 20L
-    const val RowPressMs = 100
     const val AlphabetIdleMs = 2_000L
     const val BubbleReleaseMs = 400L
     const val HapticMs = 10L
@@ -119,6 +113,7 @@ private object Ink {
     val Border = Color(0xFF383838)
 }
 
+@Immutable
 data class AspireSong(
     val id: Long, val title: String, val artist: String, val album: String,
     val albumId: Long, val duration: Long, val uri: Uri, val art: Uri?
@@ -178,15 +173,79 @@ private object LibraryData {
 }
 
 private object Artwork {
-    private val cache = object : LruCache<String, Bitmap>(10 * 1024) {
+    private const val CACHE_KB = 24 * 1024
+    private val noArtKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val memory = object : LruCache<String, Bitmap>(CACHE_KB) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
-    suspend fun get(context: Context, uri: Uri?): Bitmap? = withContext(Dispatchers.IO) {
-        if (uri == null) return@withContext null
-        cache.get(uri.toString())?.let { return@withContext it }
-        val bitmap = runCatching { context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } }.getOrNull()
-        if (bitmap != null) cache.put(uri.toString(), bitmap)
-        bitmap
+
+    suspend fun get(context: Context, uri: Uri?, targetPx: Int = LibraryTuning.ArtThumbnailSize): Bitmap? =
+        withContext(Dispatchers.IO) {
+            if (uri == null) return@withContext null
+            val key = uri.toString() + "#$targetPx"
+            memory.get(key)?.let { return@withContext it }
+            if (key in noArtKeys) return@withContext null
+
+            val cacheFile = java.io.File(
+                context.cacheDir,
+                "aspire_art_" + java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(key.toByteArray())
+                    .joinToString("") { "%02x".format(it) } + ".jpg"
+            )
+
+            if (cacheFile.exists()) {
+                val cached = runCatching { BitmapFactory.decodeFile(cacheFile.absolutePath) }.getOrNull()
+                if (cached != null) {
+                    memory.put(key, cached)
+                    return@withContext cached
+                }
+                noArtKeys.add(key)
+                return@withContext null
+            }
+
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                noArtKeys.add(key)
+                runCatching { cacheFile.parentFile?.mkdirs(); cacheFile.createNewFile() }
+                return@withContext null
+            }
+
+            val sample = calculateInSampleSize(bounds.outWidth, bounds.outHeight, targetPx)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            val bitmap = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+            }.getOrNull()
+
+            if (bitmap == null) {
+                noArtKeys.add(key)
+                runCatching { cacheFile.parentFile?.mkdirs(); cacheFile.createNewFile() }
+                return@withContext null
+            }
+
+            memory.put(key, bitmap)
+            runCatching {
+                cacheFile.parentFile?.mkdirs()
+                cacheFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+            }
+            bitmap
+        }
+
+    private fun calculateInSampleSize(width: Int, height: Int, target: Int): Int {
+        var sample = 1
+        var w = width
+        var h = height
+        while (w / 2 >= target && h / 2 >= target) {
+            sample *= 2
+            w /= 2
+            h /= 2
+        }
+        return sample
     }
 }
 
@@ -231,7 +290,6 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var selectedGenre by remember { mutableStateOf<GenreItem?>(null) }
     var menuSong by remember { mutableStateOf<AspireSong?>(null) }
     var infoSong by remember { mutableStateOf<AspireSong?>(null) }
-    var activeLetter by remember { mutableStateOf("#") }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = AspireLibraryScrollMemory.firstVisibleIndex)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -273,23 +331,37 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     val artists = remember(songs) {
         songs.groupBy { it.artist }.map { (name, list) -> ArtistItem(name, list.size, list.firstOrNull()?.art) }.sortedBy { it.name.lowercase(Locale.ROOT) }
     }
-    val filtered = remember(songs, query, selectedAlbum, selectedArtist, selectedGenre) {
-        songs.filter { s ->
-            (selectedAlbum == null || s.albumId == selectedAlbum) &&
-            (selectedArtist == null || s.artist == selectedArtist) &&
-            (selectedGenre == null || selectedGenre!!.songIds.contains(s.id)) &&
-            (query.isBlank() || s.title.contains(query, true) || s.artist.contains(query, true) || s.album.contains(query, true))
+    var filtered by remember { mutableStateOf(emptyList<AspireSong>()) }
+    LaunchedEffect(songs, query, selectedAlbum, selectedArtist, selectedGenre) {
+        filtered = withContext(Dispatchers.Default) {
+            songs.filter { song ->
+                (selectedAlbum == null || song.albumId == selectedAlbum) &&
+                    (selectedArtist == null || song.artist == selectedArtist) &&
+                    (selectedGenre == null || selectedGenre!!.songIds.contains(song.id)) &&
+                    (query.isBlank() || song.title.contains(query, true) ||
+                        song.artist.contains(query, true) || song.album.contains(query, true))
+            }
         }
     }
     val index = remember(filtered) {
-        val map = LinkedHashMap<String, Int>()
-        filtered.forEachIndexed { i, song -> if (!map.containsKey(song.letter)) map[song.letter] = i }
-        map
+        val map = LinkedHashMap<String, Int>(27)
+        filtered.forEachIndexed { position, song ->
+            if (!map.containsKey(song.letter)) map[song.letter] = position
+        }
+        map.toMap()
+    }
+    val jumpToLetter: (String) -> Unit = remember(index, listState, scope) {
+        { letter ->
+            index[letter]?.let { position ->
+                scope.launch { listState.scrollToItem(position) }
+            }
+        }
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex, filtered) {
-        AspireLibraryScrollMemory.firstVisibleIndex = listState.firstVisibleItemIndex
-        filtered.getOrNull(listState.firstVisibleItemIndex)?.let { activeLetter = it.letter }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { AspireLibraryScrollMemory.firstVisibleIndex = it }
     }
 
     Column(Modifier.fillMaxSize().background(Ink.Background)
@@ -352,15 +424,10 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
             tab == "Songs" -> if (filtered.isEmpty()) EmptyResults(::scan) else Row(Modifier.fillMaxSize()) {
                 SongResults(filtered, listState, currentSong = playingId, onPlay = { playingId = it.id; AspireAudioPlayer.play(context, it) }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
                 AlphabetIndex(
-                    available = index.keys,
-                    active = activeLetter,
-                    isScrolling = listState.isScrollInProgress,
-                    onLetter = { letter ->
-                        activeLetter = letter
-                        index[letter]?.let { position ->
-                            scope.launch { listState.scrollToItem(position) }
-                        }
-                    }
+                    songs = filtered,
+                    state = listState,
+                    index = index,
+                    onLetter = jumpToLetter
                 )
             }
             tab == "Albums" -> LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -465,22 +532,35 @@ private fun SongResults(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val topFadePx = with(density) { LibraryTuning.TopFadeHeight.toPx() }
     val bottomFadePx = with(density) { LibraryTuning.BottomFadeHeight.toPx() }
+    val rowHeightPx = with(density) { LibraryTuning.RowHeight.toPx() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize()
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
-                val topStop = (topFadePx / size.height).coerceIn(0f, 0.45f)
-                val bottomStop = (1f - bottomFadePx / size.height).coerceIn(topStop + 0.05f, 1f)
+                val layout = state.layoutInfo
+                val scrolledPx = state.firstVisibleItemIndex * rowHeightPx + state.firstVisibleItemScrollOffset
+                val topStrength = (scrolledPx / topFadePx).coerceIn(0f, 1f)
+                val lastVisible = layout.visibleItemsInfo.lastOrNull()
+                val remainingPx = if (lastVisible == null || layout.totalItemsCount == 0) {
+                    0f
+                } else {
+                    ((layout.totalItemsCount - 1 - lastVisible.index).coerceAtLeast(0) * rowHeightPx +
+                        lastVisible.offset + lastVisible.size - layout.viewportEndOffset).coerceAtLeast(0f)
+                }
+                val bottomStrength = if (state.canScrollForward) {
+                    (remainingPx / bottomFadePx).coerceIn(0f, 1f)
+                } else 0f
+
+                val topStop = (topFadePx / size.height).coerceIn(0.02f, 0.45f)
+                val bottomStop = (1f - bottomFadePx / size.height).coerceIn(topStop + 0.05f, 0.98f)
                 drawRect(
                     brush = Brush.verticalGradient(
-                        *arrayOf(
-                            0f to Color.Transparent,
-                            topStop to Color.Black,
-                            bottomStop to Color.Black,
-                            1f to Color.Transparent
-                        ),
+                        0f to Color.Black.copy(alpha = 1f - topStrength),
+                        topStop to Color.Black,
+                        bottomStop to Color.Black,
+                        1f to Color.Black.copy(alpha = 1f - bottomStrength),
                         startY = 0f,
                         endY = size.height
                     ),
@@ -488,80 +568,56 @@ private fun SongResults(
                 )
             },
         state = state,
-        contentPadding = PaddingValues(bottom = 24.dp)
+        contentPadding = PaddingValues(
+            top = LibraryTuning.SongListTopPadding,
+            bottom = LibraryTuning.SongListBottomPadding
+        )
     ) {
-        itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
-            val entrance = remember(song.id) { Animatable(if (index < 8) 0f else 1f) }
-            LaunchedEffect(song.id, index) {
-                if (index < 8 && entrance.value == 0f) {
-                    delay(index * LibraryTuning.RowStaggerMs)
-                    entrance.animateTo(1f, tween(LibraryTuning.RowAnimationMs))
-                }
-            }
-            val interaction = remember(song.id) { MutableInteractionSource() }
-            val pressed by interaction.collectIsPressedAsState()
-            val pressScale by animateFloatAsState(
-                targetValue = if (pressed) 0.98f else 1f,
-                animationSpec = tween(LibraryTuning.RowPressMs),
-                label = "song-press"
-            )
-
-            Column(
+        items(
+            items = songs,
+            key = { it.id },
+            contentType = { "song-row" }
+        ) { song ->
+            Row(
                 Modifier.fillMaxWidth()
-                    .graphicsLayer {
-                        val info = state.layoutInfo
-                        val visible = info.visibleItemsInfo.firstOrNull { it.key == song.id }
-                        val viewportHeight = (info.viewportEndOffset - info.viewportStartOffset).coerceAtLeast(1)
-                        val center = visible?.let { it.offset + it.size / 2 } ?: (viewportHeight / 2)
-                        val viewportCenter = (info.viewportStartOffset + info.viewportEndOffset) / 2
-                        val distance = (kotlin.math.abs(center - viewportCenter).toFloat() / (viewportHeight * 0.5f)).coerceIn(0f, 1f)
-                        val edge = ((distance - 0.35f) / 0.65f).coerceIn(0f, 1f)
-                        val depthScale = 1f - LibraryTuning.RowEdgeScale * edge
-                        val depthAlpha = 1f - LibraryTuning.RowEdgeAlpha * edge
-                        val enter = entrance.value
-                        scaleX = depthScale * pressScale
-                        scaleY = depthScale * pressScale
-                        alpha = depthAlpha * enter
-                        translationY = (1f - enter) * with(density) { 12.dp.toPx() }
-                    }
-                    .background(
-                        Color.White.copy(alpha = if (pressed) 0.045f else 0f),
-                        RoundedCornerShape(14.dp)
-                    )
+                    .height(LibraryTuning.RowHeight)
+                    .clickable { onPlay(song) }
+                    .padding(start = 25.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier.fillMaxWidth().height(LibraryTuning.RowHeight)
-                        .clickable(interactionSource = interaction, indication = null) { onPlay(song) }
-                        .padding(start = 25.dp, end = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                ArtworkImage(
+                    song.art,
+                    Modifier.size(LibraryTuning.ArtSize).clip(RoundedCornerShape(LibraryTuning.ArtRadius)),
+                    targetSizeDp = LibraryTuning.ArtSize
+                )
+                Column(
+                    Modifier.weight(1f).padding(start = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    ArtworkImage(song.art, Modifier.size(LibraryTuning.ArtSize).clip(RoundedCornerShape(LibraryTuning.ArtRadius)))
-                    Column(
-                        Modifier.weight(1f).padding(start = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                song.title,
-                                color = if (song.id == currentSong) Ink.White else Color(0xFFD0D0D0),
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            if (song.id == currentSong) PlayingEqualizer()
-                        }
-                        Text(song.artist, color = Ink.Grey, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            song.title,
+                            color = if (song.id == currentSong) Ink.White else Color(0xFFD0D0D0),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (song.id == currentSong) PlayingEqualizer()
                     }
-                    Text(song.durationText, color = Ink.Grey, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 10.dp))
-                    Text(
-                        "⋮", color = Ink.White, fontSize = 25.sp,
-                        modifier = Modifier.clickable { onMenu(song) }.padding(horizontal = 4.dp)
-                    )
+                    Text(song.artist, color = Ink.Grey, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Spacer(Modifier.padding(start = 95.dp, end = 48.dp).fillMaxWidth().height(1.dp).background(Ink.Divider))
+                Text(song.durationText, color = Ink.Grey, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 10.dp))
+                Text(
+                    "⋮", color = Ink.White, fontSize = 25.sp,
+                    modifier = Modifier.clickable { onMenu(song) }.padding(horizontal = 4.dp)
+                )
             }
+            Spacer(
+                Modifier.padding(start = 95.dp, end = 48.dp)
+                    .fillMaxWidth().height(1.dp).background(Ink.Divider)
+            )
         }
     }
 }
@@ -589,27 +645,37 @@ private fun PlayingEqualizer() {
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        listOf(first, second, third).forEach { barHeight ->
-            Box(
-                Modifier.width(2.dp).height(barHeight.dp)
-                    .clip(RoundedCornerShape(2.dp)).background(Ink.White)
-            )
-        }
+        Box(Modifier.width(2.dp).height(first.dp).clip(RoundedCornerShape(2.dp)).background(Ink.White))
+        Box(Modifier.width(2.dp).height(second.dp).clip(RoundedCornerShape(2.dp)).background(Ink.White))
+        Box(Modifier.width(2.dp).height(third.dp).clip(RoundedCornerShape(2.dp)).background(Ink.White))
     }
 }
 
 @Composable
-private fun ArtworkImage(uri: Uri?, modifier: Modifier = Modifier) {
+private fun ArtworkImage(
+    uri: Uri?,
+    modifier: Modifier = Modifier,
+    targetSizeDp: androidx.compose.ui.unit.Dp = LibraryTuning.ArtSize
+) {
     val context = LocalContext.current
-    var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(uri) { bitmap = Artwork.get(context, uri) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val targetPx = with(density) { targetSizeDp.roundToPx() }.coerceAtLeast(64)
+    var bitmap by remember(uri, targetPx) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri, targetPx) {
+        bitmap = Artwork.get(context, uri, targetPx)
+    }
     Box(
         modifier.background(Color(0xFF101010))
             .border(1.dp, Color(0xFF333333), RoundedCornerShape(LibraryTuning.ArtRadius)),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
-            Image(bitmap!!.asImageBitmap(), contentDescription = "Album artwork", modifier = Modifier.fillMaxSize())
+        val loaded = bitmap
+        if (loaded != null) {
+            Image(
+                loaded.asImageBitmap(),
+                contentDescription = "Album artwork",
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
             Box(
                 Modifier.fillMaxSize().clip(RoundedCornerShape(LibraryTuning.ArtRadius))
@@ -624,30 +690,45 @@ private fun ArtworkImage(uri: Uri?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AlphabetIndex(
-    available: Set<String>,
-    active: String,
-    isScrolling: Boolean,
+    songs: List<AspireSong>,
+    state: androidx.compose.foundation.lazy.LazyListState,
+    index: Map<String, Int>,
     onLetter: (String) -> Unit
 ) {
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val bubbleSizePx = with(density) { LibraryTuning.AlphabetBubbleSize.toPx() }
-    val bubbleLeftPx = with(density) { (LibraryTuning.AlphabetBubbleSize + 12.dp).roundToPx() }
+    val bubbleLeftPx = with(density) { (LibraryTuning.AlphabetBubbleSize + 4.dp).roundToPx() }
     val letters = remember { listOf("#") + ('A'..'Z').map { it.toString() } }
+    val available = remember(index) { index.keys }
+    val nearestLetter = remember(available) {
+        letters.mapIndexed { requestedIndex, _ ->
+            val best = letters.indices.filter { letters[it] in available }
+                .minByOrNull { kotlin.math.abs(it - requestedIndex) }
+            best?.let { letters[it] } ?: "#"
+        }
+    }
+    var activeLetter by remember { mutableStateOf("#") }
     var dragging by remember { mutableStateOf(false) }
     var bubbleLetter by remember { mutableStateOf<String?>(null) }
     var fingerY by remember { mutableFloatStateOf(0f) }
     var heightPx by remember { mutableFloatStateOf(1f) }
     var idle by remember { mutableStateOf(false) }
     var lastHapticLetter by remember { mutableStateOf<String?>(null) }
-    val indexAlpha by animateFloatAsState(
+    val indexAlpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (idle && !dragging) 0.58f else 1f,
         animationSpec = tween(260),
         label = "alphabet-idle-alpha"
     )
 
-    LaunchedEffect(isScrolling, dragging) {
-        if (isScrolling || dragging) {
+    LaunchedEffect(state, songs) {
+        snapshotFlow { state.firstVisibleItemIndex }
+            .map { songs.getOrNull(it)?.letter ?: "#" }
+            .distinctUntilChanged()
+            .collect { activeLetter = it }
+    }
+    LaunchedEffect(state, dragging) {
+        if (state.isScrollInProgress || dragging) {
             idle = false
         } else {
             delay(LibraryTuning.AlphabetIdleMs)
@@ -662,12 +743,11 @@ private fun AlphabetIndex(
     }
 
     fun choose(y: Float) {
-        fingerY = y.coerceIn(0f, heightPx)
-        val requestedIndex = (fingerY / heightPx * letters.size).toInt().coerceIn(0, letters.lastIndex)
-        val requested = requestedIndex
-        val availableIndices = letters.indices.filter { letters[it] in available }
-        val nearestIndex = availableIndices.minByOrNull { kotlin.math.abs(it - requested) } ?: return
-        val chosen = letters[nearestIndex]
+        val boundedY = y.coerceIn(0f, heightPx)
+        fingerY = boundedY
+        val requestedIndex = (boundedY / heightPx * letters.size)
+            .toInt().coerceIn(0, letters.lastIndex)
+        val chosen = nearestLetter[requestedIndex]
         bubbleLetter = chosen
         idle = false
         if (chosen != lastHapticLetter) {
@@ -676,7 +756,12 @@ private fun AlphabetIndex(
             runCatching {
                 val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
                 if (Build.VERSION.SDK_INT >= 26) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(LibraryTuning.HapticMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                    vibrator.vibrate(
+                        VibrationEffect.createOneShot(
+                            LibraryTuning.HapticMs,
+                            VibrationEffect.DEFAULT_AMPLITUDE
+                        )
+                    )
                 } else {
                     @Suppress("DEPRECATION")
                     vibrator.vibrate(LibraryTuning.HapticMs)
@@ -686,52 +771,71 @@ private fun AlphabetIndex(
     }
 
     BoxWithConstraints(
-        Modifier.width(LibraryTuning.AlphabetTouchWidth).fillMaxHeight()
+        Modifier.width(LibraryTuning.AlphabetTouchWidth)
+            .fillMaxHeight()
             .graphicsLayer { alpha = indexAlpha }
+            .onSizeChanged { heightPx = it.height.toFloat().coerceAtLeast(1f) }
             .pointerInput(available, heightPx) {
                 detectDragGestures(
-                    onDragStart = { dragging = true; lastHapticLetter = null; choose(it.y) },
-                    onDragEnd = { dragging = false; lastHapticLetter = null },
-                    onDragCancel = { dragging = false; lastHapticLetter = null },
-                    onDrag = { change, _ -> change.consume(); choose(change.position.y) }
+                    onDragStart = {
+                        dragging = true
+                        lastHapticLetter = null
+                        choose(it.y)
+                    },
+                    onDragEnd = {
+                        dragging = false
+                        lastHapticLetter = null
+                    },
+                    onDragCancel = {
+                        dragging = false
+                        lastHapticLetter = null
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        choose(change.position.y)
+                    }
                 )
             }
             .pointerInput(available, heightPx) {
-                detectTapGestures { y ->
+                detectTapGestures { position ->
                     dragging = false
                     lastHapticLetter = null
-                    choose(y.y)
+                    choose(position.y)
                 }
             }
     ) {
-        SideEffect { heightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f) }
         Column(
             Modifier.fillMaxSize().padding(end = 2.dp),
             verticalArrangement = Arrangement.SpaceEvenly,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             letters.forEach { letter ->
-                val isActive = letter == active
+                val isActive = letter == activeLetter
                 val isAvailable = letter in available
-                val selectedIndex = letters.indexOf(bubbleLetter ?: active)
+                val selectedIndex = letters.indexOf(bubbleLetter ?: activeLetter)
                 val distance = kotlin.math.abs(letters.indexOf(letter) - selectedIndex).toFloat()
                 val magnification = if (dragging) {
                     (1f - distance / LibraryTuning.AlphabetMagnifierRadius).coerceIn(0f, 1f)
                 } else 0f
-                val scale by animateFloatAsState(
+                val scale by androidx.compose.animation.core.animateFloatAsState(
                     targetValue = 1f + magnification * LibraryTuning.AlphabetMagnifierScale,
-                    animationSpec = spring(stiffness = LibraryTuning.SpringStiffness, dampingRatio = LibraryTuning.SpringDamping),
+                    animationSpec = androidx.compose.animation.core.spring(
+                        stiffness = LibraryTuning.SpringStiffness,
+                        dampingRatio = LibraryTuning.SpringDamping
+                    ),
                     label = "alphabet-scale"
                 )
-                val shift by animateFloatAsState(
-                    targetValue = -magnification * with(androidx.compose.ui.platform.LocalDensity.current) { LibraryTuning.AlphabetMagnifierShift.toPx() },
-                    animationSpec = spring(stiffness = LibraryTuning.SpringStiffness, dampingRatio = LibraryTuning.SpringDamping),
+                val shift by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = -magnification * with(density) {
+                        LibraryTuning.AlphabetMagnifierShift.toPx()
+                    },
+                    animationSpec = androidx.compose.animation.core.spring(
+                        stiffness = LibraryTuning.SpringStiffness,
+                        dampingRatio = LibraryTuning.SpringDamping
+                    ),
                     label = "alphabet-shift"
                 )
-                Box(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     if (isActive && !dragging) {
                         Box(Modifier.size(17.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)))
                         Box(Modifier.size(3.dp).clip(CircleShape).background(Ink.White))
@@ -758,7 +862,9 @@ private fun AlphabetIndex(
             val bubbleY = (fingerY - bubbleSizePx / 2f)
                 .coerceIn(0f, (constraints.maxHeight - bubbleSizePx).coerceAtLeast(0f))
             Box(
-                Modifier.offset { IntOffset(-bubbleLeftPx, bubbleY.roundToInt()) }
+                Modifier.offset {
+                    androidx.compose.ui.unit.IntOffset(-bubbleLeftPx, bubbleY.toInt())
+                }
                     .size(LibraryTuning.AlphabetBubbleSize)
                     .clip(RoundedCornerShape(22.dp))
                     .background(Color(0xE61C1C1C))
@@ -770,7 +876,6 @@ private fun AlphabetIndex(
         }
     }
 }
-
 @Composable
 private fun EmptyResults(onScan: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(bottom = 50.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
