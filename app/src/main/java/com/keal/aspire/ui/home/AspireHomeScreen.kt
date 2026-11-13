@@ -84,7 +84,7 @@ private object TerrainTuning {
     const val COLUMNS = 66
     const val ROWS = 27
     const val WAVE_HEIGHT = 31f
-    const val WAVE_SPEED = 0.72f
+    const val WAVE_SPEED = 0.10f
     const val DOT_SPACING_HINT = 5.2f
     const val INFLUENCE_RADIUS = 104f
     const val PUSH_STRENGTH = 1500f
@@ -256,7 +256,7 @@ private class TerrainField {
 
     fun draw(scope: androidx.compose.ui.graphics.drawscope.DrawScope, timeNanos: Long) {
         with(scope) {
-            val t = timeNanos.toFloat() * TerrainTuning.WAVE_SPEED
+            val t = (timeNanos / 1_000_000_000f) * TerrainTuning.WAVE_SPEED
             val edge = width * 0.12f
             for (i in 0 until count) {
                 val x = xs[i]
