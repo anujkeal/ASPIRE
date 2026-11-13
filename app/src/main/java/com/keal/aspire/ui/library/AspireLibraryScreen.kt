@@ -13,9 +13,11 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.MediaStore
 import android.provider.MediaStore.Audio
+import android.widget.Toast
 import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,6 +28,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -88,7 +91,7 @@ data class AspireSong(
     val letter get() = title.firstOrNull()?.uppercaseChar()?.takeIf { it in 'A'..'Z' }?.toString() ?: "#"
 }
 private data class AlbumItem(val id: Long, val name: String, val artist: String, val art: Uri?)
-private data class ArtistItem(val name: String, val count: Int)
+private data class ArtistItem(val name: String, val count: Int, val artwork: Uri?)
 private data class GenreItem(val id: Long, val name: String, val count: Int, val songIds: Set<Long>)
 
 private object LibraryData {
@@ -153,7 +156,7 @@ private object Artwork {
 
 object AspireAudioPlayer {
     private var player: MediaPlayer? = null
-    private val queue = ArrayDeque<Uri>()
+    private val queue = ArrayDeque<AspireSong>()
     fun play(context: Context, song: AspireSong) {
         runCatching {
             player?.release()
@@ -166,14 +169,11 @@ object AspireAudioPlayer {
             AspireLastPlayedStore.saveLastPlayed(context, song.id, song.title, song.artist, song.albumId, true)
         }
     }
-    fun playNext(uri: Uri) { queue.addFirst(uri) }
-    fun enqueue(uri: Uri) { queue.addLast(uri) }
+    fun playNext(song: AspireSong) { queue.addFirst(song) }
+    fun enqueue(song: AspireSong) { queue.addLast(song) }
     private fun playNext(context: Context) {
         val next = queue.removeFirstOrNull() ?: return
-        runCatching {
-            player?.release()
-            player = MediaPlayer().apply { setDataSource(context, next); setOnPreparedListener { it.start() }; prepareAsync() }
-        }
+        play(context, next)
     }
 }
 
@@ -195,6 +195,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     var selectedArtist by remember { mutableStateOf<String?>(null) }
     var selectedGenre by remember { mutableStateOf<GenreItem?>(null) }
     var menuSong by remember { mutableStateOf<AspireSong?>(null) }
+    var infoSong by remember { mutableStateOf<AspireSong?>(null) }
     var bubble by remember { mutableStateOf<String?>(null) }
     var activeLetter by remember { mutableStateOf("#") }
     val listState = rememberLazyListState()
@@ -202,6 +203,12 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         allowed = granted
         denied = !granted
+    }
+
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) scan()
     }
 
     fun scan() {
@@ -224,7 +231,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
         }.sortedBy { it.name.lowercase(Locale.ROOT) }
     }
     val artists = remember(songs) {
-        songs.groupBy { it.artist }.map { (name, list) -> ArtistItem(name, list.size) }.sortedBy { it.name.lowercase(Locale.ROOT) }
+        songs.groupBy { it.artist }.map { (name, list) -> ArtistItem(name, list.size, list.firstOrNull()?.art) }.sortedBy { it.name.lowercase(Locale.ROOT) }
     }
     val filtered = remember(songs, query, selectedAlbum, selectedArtist, selectedGenre) {
         songs.filter { s ->
@@ -304,10 +311,6 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                     activeLetter = letter
                     bubble = letter
                     index[letter]?.let { position -> scope.launch { listState.scrollToItem(position) } }
-                    runCatching {
-                        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                        if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(LibraryTuning.HapticMs, VibrationEffect.DEFAULT_AMPLITUDE))
-                    }
                 }, onRelease = { bubble = null })
             }
             tab == "Albums" -> LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -323,7 +326,7 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 items(artists.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.name }) { artist ->
                     Row(Modifier.fillMaxWidth().height(76.dp).clickable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.Surface), contentAlignment = Alignment.Center) {
-                            Text(artist.name.take(1).uppercase(), color = Ink.White, fontSize = 19.sp)
+                            ArtworkImage(artist.artwork, Modifier.fillMaxSize().clip(CircleShape))
                         }
                         Column(Modifier.padding(start = 14.dp)) {
                             Text(artist.name, color = Ink.White, fontWeight = FontWeight.Medium)
@@ -363,17 +366,47 @@ fun AspireLibraryScreen(onBack: () -> Unit) {
                 listOf("Play next", "Add to queue", "Add to playlist", "Go to artist", "Go to album", "Song info", "Delete").forEach { action ->
                     Text(action, color = Ink.White, modifier = Modifier.fillMaxWidth().clickable {
                         when (action) {
-                            "Play next" -> AspireAudioPlayer.playNext(song.uri)
-                            "Add to queue" -> AspireAudioPlayer.enqueue(song.uri)
+                            "Play next" -> AspireAudioPlayer.playNext(song)
+                            "Add to queue" -> AspireAudioPlayer.enqueue(song)
+                            "Add to playlist" -> Toast.makeText(context, "Playlist creation will be connected with the Playlists screen", Toast.LENGTH_SHORT).show()
                             "Go to artist" -> { selectedArtist = song.artist; selectedAlbum = null; selectedGenre = null }
                             "Go to album" -> { selectedAlbum = song.albumId; selectedArtist = null; selectedGenre = null }
-                            "Delete" -> runCatching { context.contentResolver.delete(song.uri, null, null); scan() }
+                            "Song info" -> infoSong = song
+                            "Delete" -> {
+                                if (Build.VERSION.SDK_INT >= 30) {
+                                    val request = MediaStore.createDeleteRequest(context.contentResolver, listOf(song.uri))
+                                    deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                                } else {
+                                    runCatching { context.contentResolver.delete(song.uri, null, null); scan() }
+                                        .onFailure { Toast.makeText(context, "Android did not allow deleting this file", Toast.LENGTH_LONG).show() }
+                                }
+                            }
                         }
                         menuSong = null
                     }.padding(vertical = 14.dp))
                 }
             }
         }
+    }
+
+    infoSong?.let { song ->
+        AlertDialog(
+            onDismissRequest = { infoSong = null },
+            containerColor = Color(0xFF171717),
+            titleContentColor = Ink.White,
+            textContentColor = Ink.Grey,
+            title = { Text("Song info") },
+            text = {
+                Text(
+                    "Title: " + song.title + "\nArtist: " + song.artist +
+                        "\nAlbum: " + song.album + "\nDuration: " + song.durationText +
+                        "\nMedia ID: " + song.id
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { infoSong = null }) { Text("Close", color = Ink.White) }
+            }
+        )
     }
 }
 
@@ -408,15 +441,51 @@ private fun ArtworkImage(uri: Uri?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AlphabetIndex(available: Set<String>, active: String, onLetter: (String) -> Unit, onRelease: () -> Unit) {
+    val context = LocalContext.current
     val letters = remember { listOf("#") + ('A'..'Z').map { it.toString() } + "#" }
     Column(
-        Modifier.width(25.dp).fillMaxHeight().padding(end = 3.dp).pointerInput(available) {
-            detectVerticalDragGestures(
-                onDragStart = { pos -> onLetter(letters[(pos.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) },
-                onDragEnd = onRelease, onDragCancel = onRelease,
-                onVerticalDrag = { change, _ -> onLetter(letters[(change.position.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }
-            )
-        },
+        Modifier.width(25.dp).fillMaxHeight().padding(end = 3.dp)
+            .pointerInput(available) {
+                var lastLetter = ""
+                fun choose(y: Float) {
+                    val letter = letters[(y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]
+                    if (letter != lastLetter) {
+                        lastLetter = letter
+                        onLetter(letter)
+                        runCatching {
+                            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                            if (Build.VERSION.SDK_INT >= 26) {
+                                vibrator.vibrate(VibrationEffect.createOneShot(LibraryTuning.HapticMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                vibrator.vibrate(LibraryTuning.HapticMs)
+                            }
+                        }
+                    }
+                }
+                detectVerticalDragGestures(
+                    onDragStart = { lastLetter = ""; choose(it.y) },
+                    onDragEnd = { lastLetter = ""; onRelease() },
+                    onDragCancel = { lastLetter = ""; onRelease() },
+                    onVerticalDrag = { change, _ -> choose(change.position.y) }
+                )
+            }
+            .pointerInput(available) {
+                detectTapGestures { pos ->
+                    val letter = letters[(pos.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]
+                    onLetter(letter)
+                    runCatching {
+                        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(LibraryTuning.HapticMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(LibraryTuning.HapticMs)
+                        }
+                    }
+                    onRelease()
+                }
+            },
         verticalArrangement = Arrangement.SpaceEvenly, horizontalAlignment = Alignment.CenterHorizontally
     ) {
         letters.forEach { letter ->
