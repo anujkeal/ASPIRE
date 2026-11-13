@@ -164,7 +164,7 @@ object AspirePlaybackController {
     }
 
     private fun toMediaItem(song: AspireSong): MediaItem {
-        val extras = Bundle().apply { putLong(KEY_ALBUM_ID, song.albumId) }
+        val extras = Bundle().apply { putLong(KEY_ALBUM_ID, song.albumId); putLong(KEY_DURATION, song.duration) }
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
@@ -229,7 +229,7 @@ object AspirePlaybackController {
                 title = md.title?.toString() ?: "Unknown title",
                 artist = md.artist?.toString() ?: "Unknown artist",
                 album = md.albumTitle?.toString() ?: "",
-                durationMs = (player.getDurationForItem(index)).coerceAtLeast(0L),
+                durationMs = md.extras?.getLong(KEY_DURATION, 0L)?.takeIf { it > 0L } ?: player.getDurationForItem(index).coerceAtLeast(0L),
                 uri = uri,
                 artworkUri = md.artworkUri
             )
@@ -257,4 +257,5 @@ object AspirePlaybackController {
     }
 
     private const val KEY_ALBUM_ID = "album_id"
+    private const val KEY_DURATION = "duration_ms"
 }
