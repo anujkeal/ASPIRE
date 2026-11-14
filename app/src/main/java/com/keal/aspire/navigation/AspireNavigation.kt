@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -114,9 +115,8 @@ fun AspireNavigationHost() {
         sheetAnimating = true
         scope.launch {
             sheetProgress.snapTo(0f)
-            if (animationsEnabled(context)) {
-                sheetProgress.animateTo(1f, tween(AspireNavigationMotion.SheetDurationMs))
-            } else sheetProgress.snapTo(1f)
+            if (animationsEnabled(context)) sheetProgress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
+            else sheetProgress.snapTo(1f)
             sheetAnimating = false
             navigationHaptic(context)
         }
@@ -189,6 +189,7 @@ fun AspireNavigationHost() {
                     var dragX = 0f
                     var lastX = down.position.x
                     var lastTime = down.uptimeMillis
+                    val velocityTracker = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
                     var velocity = 0f
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -197,7 +198,8 @@ fun AspireNavigationHost() {
                         val delta = x - lastX
                         dragX = (dragX + delta).coerceAtLeast(0f)
                         val dt = (change.uptimeMillis - lastTime).coerceAtLeast(1L)
-                        velocity = delta * 1000f / dt
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+                        velocity = velocityTracker.calculateVelocity().x
                         lastX = x
                         lastTime = change.uptimeMillis
                         if (!started && dragX > viewConfiguration.touchSlop) {
@@ -305,6 +307,7 @@ fun AspireNavigationHost() {
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                             totalY = 0f
                             var last = down.position.y
+                            val velocityTracker = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
                             var active = false
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -312,6 +315,7 @@ fun AspireNavigationHost() {
                                 val y = change.position.y
                                 val delta = y - last
                                 totalY += delta
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
                                 last = y
                                 if (!active && totalY > viewConfiguration.touchSlop * 1.4f) {
                                     active = true
@@ -325,7 +329,8 @@ fun AspireNavigationHost() {
                                 if (!change.pressed) break
                             }
                             if (active) {
-                                val dismiss = sheetProgress.value < (1f - AspireNavigationMotion.SheetDismissFraction)
+                                val flingDown = velocityTracker.calculateVelocity().y >= AspireNavigationMotion.FlingVelocityPxPerSecond
+                                val dismiss = sheetProgress.value < (1f - AspireNavigationMotion.SheetDismissFraction) || flingDown
                                 if (dismiss) {
                                     if (animationsEnabled(context)) sheetProgress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
                                     else sheetProgress.snapTo(0f)
