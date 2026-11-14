@@ -341,7 +341,7 @@ fun AspireNavigationHost() {
                         }
                     }
             ) {
-                AspireNowPlayingScreen(onBack = ::closePlayer)
+                AspireNowPlayingScreen(onBack = ::closePlayer, transitionProgress = { sheetProgress.value })
             }
         }
     }
