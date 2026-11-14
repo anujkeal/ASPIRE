@@ -62,6 +62,7 @@ fun AspireNavigationHost() {
     var transitioning by remember { mutableStateOf(false) }
     var sheetVisible by remember { mutableStateOf(false) }
     var sheetAnimating by remember { mutableStateOf(false) }
+    var libraryCreated by remember { mutableStateOf(false) }
     var interactivePop by remember { mutableStateOf(false) }
     var interactiveProgress by remember { mutableFloatStateOf(0f) }
     var interactiveSheetDrag by remember { mutableStateOf(false) }
@@ -95,6 +96,7 @@ fun AspireNavigationHost() {
 
     fun openLibrary() {
         if (transitioning || stack.last() == AspireDestination.Library) return
+        libraryCreated = true
         transitionFrom = stack.last()
         transitionTo = AspireDestination.Library
         direction = TransitionDirection.Push
@@ -232,25 +234,113 @@ fun AspireNavigationHost() {
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         val current = stack.last()
-        val base = if (transitioning) {
-            if (direction == TransitionDirection.Push) transitionFrom else transitionTo
-        } else current
-        val top = if (transitioning) {
-            if (direction == TransitionDirection.Push) transitionTo else transitionFrom
-        } else current
+        val activeProgress = if (interactivePop) interactiveProgress else progress.value
+        val homeVisible = current == AspireDestination.Home ||
+            (transitioning && (transitionFrom == AspireDestination.Home || transitionTo == AspireDestination.Home))
+        val libraryVisible = libraryCreated && (current == AspireDestination.Library ||
+            (transitioning && (transitionFrom == AspireDestination.Library || transitionTo == AspireDestination.Library)))
 
-        // Base screen stays composed under the incoming screen, avoiding a blank frame.
+        // Home remains in a stable composition slot for the full app lifetime.
         Box(
-            Modifier.fillMaxSize().zIndex(0f).graphicsLayer {
-                val activeProgress = if (interactivePop) interactiveProgress else progress.value
-                val p = if (transitioning) activeProgress else 1f
-                val offset = if (!transitioning) 0f else if (direction == TransitionDirection.Push) {
-                    -AspireNavigationMotion.ParallaxFraction * p * widthPx
-                } else {
-                    -AspireNavigationMotion.ParallaxFraction * (1f - p) * widthPx
+            Modifier.fillMaxSize()
+                .zIndex(if (transitioning && direction == TransitionDirection.Pop) 0f else if (homeVisible) 0f else -1f)
+                .graphicsLayer {
+                    val p = if (transitioning) activeProgress else 1f
+                    translationX = when {
+                        !transitioning -> 0f
+                        direction == TransitionDirection.Push && transitionFrom == AspireDestination.Home ->
+                            -AspireNavigationMotion.ParallaxFraction * p * widthPx
+                        direction == TransitionDirection.Pop && transitionTo == AspireDestination.Home ->
+                            -AspireNavigationMotion.ParallaxFraction * (1f - p) * widthPx
+                        else -> 0f
+                    }
+                    alpha = if (homeVisible) 1f else 0f
+                    if (sheetVisible || sheetAnimating) {
+                        val sheet = if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value
+                        scaleX = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
+                        scaleY = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
+                        clip = true
+                        shape = RoundedCornerShape((12f * sheet).dp)
+                    }
+                }.drawWithContent {
+                    drawContent()
+                    if (transitioning && homeVisible) {
+                        val p = activeProgress
+                        val dim = when {
+                            direction == TransitionDirection.Push && transitionFrom == AspireDestination.Home -> p
+                            direction == TransitionDirection.Pop && transitionTo == AspireDestination.Home -> 1f - p
+                            else -> 0f
+                        }
+                        drawRect(Color.Black.copy(alpha = AspireNavigationMotion.PushDimAlpha * dim))
+                    }
+                    if (homeVisible && (sheetVisible || sheetAnimating)) {
+                        val sheet = if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value
+                        drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * sheet))
+                    }
                 }
-                translationX = offset
-                if (sheetVisible || sheetAnimating) {
+        ) {
+            AspireHomeScreen(onOpenLibrary = ::openLibrary, onOpenNowPlaying = ::openPlayer)
+        }
+
+        // Library is created on first entry, then retained while hidden so its
+        // MediaStore results and each tab's scroll state are not rebuilt on pop.
+        if (libraryCreated) {
+            Box(
+                Modifier.fillMaxSize()
+                    .zIndex(if (libraryVisible && transitioning) 1f else if (libraryVisible) 0f else -1f)
+                    .graphicsLayer {
+                        val p = activeProgress
+                        translationX = when {
+                            !transitioning -> 0f
+                            direction == TransitionDirection.Push && transitionTo == AspireDestination.Library ->
+                                (1f - p) * widthPx
+                            direction == TransitionDirection.Pop && transitionFrom == AspireDestination.Library ->
+                                p * widthPx
+                            else -> 0f
+                        }
+                        alpha = if (libraryVisible) 1f else 0f
+                        if (sheetVisible || sheetAnimating) {
+                            val sheet = if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value
+                            scaleX = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
+                            scaleY = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
+                            clip = true
+                            shape = RoundedCornerShape((12f * sheet).dp)
+                        }
+                    }.drawWithContent {
+                        drawContent()
+                        if (libraryVisible && (sheetVisible || sheetAnimating)) {
+                            val sheet = if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value
+                            drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * sheet))
+                        }
+                    }
+            ) {
+                AspireLibraryScreen(
+                    onBack = ::backFromLibrary,
+                    onOpenNowPlaying = ::openPlayer,
+                    titleTransitionProgress = {
+                        if (!transitioning) 1f
+                        else if (direction == TransitionDirection.Push) activeProgress else 1f - activeProgress
+                    }
+                )
+            }
+        }
+
+        // Cheap gradient strip creates the incoming screen's left-edge lift.
+        if (transitioning && direction == TransitionDirection.Push) {
+            Box(
+                Modifier.fillMaxSize().zIndex(2f).graphicsLayer {
+                    translationX = (1f - activeProgress) * widthPx
+                }
+            ) {
+                Box(
+                    Modifier.align(androidx.compose.ui.Alignment.CenterStart)
+                        .width(8.dp).fillMaxSize()
+                        .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent)))
+                )
+            }
+        }
+
+        if (sheetVisible || sheetAnimating) {
                     val sheet = sheetProgress.value
                     scaleX = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
                     scaleY = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
@@ -363,27 +453,6 @@ fun AspireNavigationHost() {
                 AspireNowPlayingScreen(onBack = ::closePlayer, transitionProgress = { if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value })
             }
         }
-    }
-}
-
-@Composable
-private fun AspireDestinationContent(
-    destination: AspireDestination,
-    onOpenLibrary: () -> Unit,
-    onOpenPlayer: () -> Unit,
-    onBack: () -> Unit,
-    titleTransitionProgress: () -> Float
-) {
-    when (destination) {
-        AspireDestination.Home -> AspireHomeScreen(
-            onOpenLibrary = onOpenLibrary,
-            onOpenNowPlaying = onOpenPlayer
-        )
-        AspireDestination.Library -> AspireLibraryScreen(
-            onBack = onBack,
-            onOpenNowPlaying = onOpenPlayer,
-            titleTransitionProgress = titleTransitionProgress
-        )
     }
 }
 
