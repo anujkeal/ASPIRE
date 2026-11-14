@@ -114,7 +114,6 @@ class AspirePlaybackService : MediaSessionService() {
             .putString(KEY_ALBUM_TITLE, metadata.albumTitle?.toString() ?: "")
             .putLong(KEY_ALBUM_ID, metadata.extras?.getLong(KEY_ALBUM_ID, -1L) ?: -1L)
             .putBoolean(KEY_PLAYING, player.isPlaying)
-            .putInt("audio_session_id", player.audioSessionId)
             .putLong(KEY_POSITION, player.currentPosition.coerceAtLeast(0L))
             .putInt(KEY_AUDIO_SESSION_ID, player.audioSessionId)
             .apply()
