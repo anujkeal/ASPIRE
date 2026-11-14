@@ -378,53 +378,6 @@ fun AspireNavigationHost() {
         }
 
         if (sheetVisible || sheetAnimating) {
-                    val sheet = sheetProgress.value
-                    scaleX = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
-                    scaleY = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
-                    clip = true
-                    shape = RoundedCornerShape((12f * sheet).dp)
-                }
-            }.drawWithContent {
-                drawContent()
-                if (transitioning) {
-                    val p = if (interactivePop) interactiveProgress else progress.value
-                    val alpha = AspireNavigationMotion.PushDimAlpha * if (direction == TransitionDirection.Push) p else (1f - p)
-                    drawRect(Color.Black.copy(alpha = alpha))
-                }
-                if (sheetVisible || sheetAnimating) {
-                    drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * (if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value)))
-                }
-            }
-        ) {
-            AspireDestinationContent(base, ::openLibrary, ::openPlayer, ::backFromLibrary, { 1f })
-        }
-
-        if (transitioning) {
-            Box(
-                Modifier.fillMaxSize().zIndex(1f).graphicsLayer {
-                    val p = if (interactivePop) interactiveProgress else progress.value
-                    translationX = if (direction == TransitionDirection.Push) (1f - p) * widthPx else p * widthPx
-                }.background(Color(0xFF050505))
-            ) {
-                AspireDestinationContent(top, ::openLibrary, ::openPlayer, ::backFromLibrary, {
-                    val p = if (interactivePop) interactiveProgress else progress.value
-                    if (direction == TransitionDirection.Push) p else 1f - p
-                })
-                if (direction == TransitionDirection.Push) {
-                    Box(
-                        Modifier.align(androidx.compose.ui.Alignment.CenterStart)
-                            .width(8.dp).fillMaxSize()
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent)
-                                )
-                            )
-                    )
-                }
-            }
-        }
-
-        if (sheetVisible || sheetAnimating) {
             Box(
                 Modifier.fillMaxSize().zIndex(4f)
                     .graphicsLayer {
