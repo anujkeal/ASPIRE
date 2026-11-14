@@ -62,6 +62,7 @@ fun AspireNavigationHost() {
     var transitioning by remember { mutableStateOf(false) }
     var sheetVisible by remember { mutableStateOf(false) }
     var sheetAnimating by remember { mutableStateOf(false) }
+    var sheetClosing by remember { mutableStateOf(false) }
     var libraryCreated by remember { mutableStateOf(false) }
     var interactivePop by remember { mutableStateOf(false) }
     var reversingPush by remember { mutableStateOf(false) }
@@ -127,7 +128,8 @@ fun AspireNavigationHost() {
     }
 
     fun closePlayer() {
-        if (!sheetVisible) return
+        if (!sheetVisible || sheetClosing) return
+        sheetClosing = true
         sheetAnimating = true
         scope.launch {
             sheetProgress.stop()
@@ -135,10 +137,12 @@ fun AspireNavigationHost() {
             else sheetProgress.snapTo(0f)
             sheetVisible = false
             sheetAnimating = false
+            sheetClosing = false
         }
     }
 
     fun backFromLibrary() {
+        if (transitioning || stack.size <= 1) return
         scope.launch { finishPop() }
     }
 
@@ -150,6 +154,7 @@ fun AspireNavigationHost() {
                 }
                 sheetVisible = false
                 sheetProgress.snapTo(0f)
+                navigationHaptic(context)
             } catch (cancelled: CancellationException) {
                 if (animationsEnabled(context)) sheetProgress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
                 else sheetProgress.snapTo(1f)
