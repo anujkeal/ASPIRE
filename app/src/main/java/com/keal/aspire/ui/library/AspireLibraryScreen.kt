@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.keal.aspire.navigation.animationsEnabled
 import com.keal.aspire.navigation.aspirePressable
 import com.keal.aspire.playback.AspirePlaybackController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
