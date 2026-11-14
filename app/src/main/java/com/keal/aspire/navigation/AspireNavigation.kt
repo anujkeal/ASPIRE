@@ -44,6 +44,8 @@ import com.keal.aspire.ui.nowplaying.AspireNowPlayingScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 private enum class AspireDestination { Home, Library }
 private enum class TransitionDirection { Push, Pop }
@@ -153,11 +155,17 @@ fun AspireNavigationHost() {
                     sheetProgress.snapTo(1f - event.progress)
                 }
                 sheetVisible = false
+                sheetAnimating = false
+                sheetClosing = false
                 sheetProgress.snapTo(0f)
                 navigationHaptic(context)
             } catch (cancelled: CancellationException) {
-                if (animationsEnabled(context)) sheetProgress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
-                else sheetProgress.snapTo(1f)
+                withContext(NonCancellable) {
+                    if (animationsEnabled(context)) sheetProgress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
+                    else sheetProgress.snapTo(1f)
+                    sheetAnimating = false
+                    sheetClosing = false
+                }
                 throw cancelled
             }
         } else {
@@ -182,11 +190,13 @@ fun AspireNavigationHost() {
                 progress.snapTo(1f)
                 navigationHaptic(context)
             } catch (cancelled: CancellationException) {
-                if (animationsEnabled(context)) progress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
-                else progress.snapTo(0f)
-                if (reversingInFlightPush) stack.add(transitionFrom)
-                transitioning = false
-                progress.snapTo(1f)
+                withContext(NonCancellable) {
+                    if (animationsEnabled(context)) progress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
+                    else progress.snapTo(0f)
+                    if (reversingInFlightPush) stack.add(transitionFrom)
+                    transitioning = false
+                    progress.snapTo(1f)
+                }
                 throw cancelled
             }
         }
