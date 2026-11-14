@@ -62,6 +62,7 @@ fun AspireNavigationHost() {
     var transitionTo by remember { mutableStateOf(AspireDestination.Home) }
     var direction by remember { mutableStateOf(TransitionDirection.Push) }
     var transitioning by remember { mutableStateOf(false) }
+    var navigationPending by remember { mutableStateOf(false) }
     var sheetVisible by remember { mutableStateOf(false) }
     var sheetAnimating by remember { mutableStateOf(false) }
     var sheetClosing by remember { mutableStateOf(false) }
@@ -99,19 +100,22 @@ fun AspireNavigationHost() {
     }
 
     fun openLibrary() {
-        if (transitioning || stack.last() == AspireDestination.Library) return
-        libraryCreated = true
-        transitionFrom = stack.last()
-        transitionTo = AspireDestination.Library
-        direction = TransitionDirection.Push
-        transitioning = true
+        if (transitioning || navigationPending || stack.last() == AspireDestination.Library) return
+        navigationPending = true
         scope.launch {
+            progress.stop()
             progress.snapTo(0f)
+            transitionFrom = stack.last()
+            transitionTo = AspireDestination.Library
+            direction = TransitionDirection.Push
+            libraryCreated = true
+            transitioning = true
             if (animationsEnabled(context)) {
                 progress.animateTo(1f, tween(AspireNavigationMotion.PushDurationMs, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)))
             } else progress.snapTo(1f)
             stack.add(AspireDestination.Library)
             transitioning = false
+            navigationPending = false
             progress.snapTo(1f)
         }
     }
@@ -144,7 +148,7 @@ fun AspireNavigationHost() {
     }
 
     fun backFromLibrary() {
-        if (transitioning || stack.size <= 1) return
+        if (transitioning || navigationPending || stack.size <= 1) return
         scope.launch { finishPop() }
     }
 
