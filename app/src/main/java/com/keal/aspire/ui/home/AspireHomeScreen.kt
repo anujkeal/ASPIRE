@@ -341,7 +341,6 @@ fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}, onOpenNowPlaying: () -> Uni
     var libraryCounts by remember { mutableStateOf(LibraryCounts()) }
     var hasAudioPermission by remember { mutableStateOf(hasAudioReadPermission(context)) }
     var lastPlayed by remember { mutableStateOf(AspireLastPlayedStore.read(context)) }
-    val sharedPlayback by AspirePlaybackController.state.collectAsStateWithLifecycle()
     val playback by AspirePlaybackController.state.collectAsStateWithLifecycle()
     val currentTrack = playback.mediaId?.let { SavedTrack(it, playback.title, playback.artist, playback.albumId, playback.isPlaying) } ?: lastPlayed
 
@@ -428,9 +427,9 @@ fun AspireHomeScreen(onOpenLibrary: () -> Unit = {}, onOpenNowPlaying: () -> Uni
                 currentTrack?.let { track ->
                     MiniPlayer(
                         track = track.copy(
-                            title = sharedPlayback.title.ifBlank { track.title },
-                            artist = sharedPlayback.artist.ifBlank { track.artist },
-                            isPlaying = sharedPlayback.isPlaying
+                            title = playback.title.ifBlank { track.title },
+                            artist = playback.artist.ifBlank { track.artist },
+                            isPlaying = playback.isPlaying
                         ),
                         onClick = onOpenNowPlaying,
                         onPlayPause = {
