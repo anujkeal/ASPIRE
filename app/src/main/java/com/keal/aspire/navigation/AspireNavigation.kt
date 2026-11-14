@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -174,9 +173,6 @@ fun AspireNavigationHost() {
                 throw cancelled
             }
         }
-    }
-    BackHandler(enabled = (sheetVisible || canGoBack) && Build.VERSION.SDK_INT < 34) {
-        if (sheetVisible) closePlayer() else scope.launch { finishPop() }
     }
 
     BoxWithConstraints(
