@@ -456,9 +456,28 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}, t
                                     .padding(horizontal = 19.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val pagePosition = pagerState.currentPage + pagerState.currentPageOffsetFraction
-                                val selectedFraction = (1f - kotlin.math.abs(pagePosition - index)).coerceIn(0f, 1f)
-                                Text(name, color = lerp(Ink.White, Color.Black, selectedFraction), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        name,
+                                        color = Ink.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.graphicsLayer {
+                                            val pagePosition = pagerState.currentPage - pagerState.currentPageOffsetFraction
+                                            alpha = kotlin.math.abs(pagePosition - index).coerceIn(0f, 1f)
+                                        }
+                                    )
+                                    Text(
+                                        name,
+                                        color = Color.Black,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.graphicsLayer {
+                                            val pagePosition = pagerState.currentPage - pagerState.currentPageOffsetFraction
+                                            alpha = (1f - kotlin.math.abs(pagePosition - index)).coerceIn(0f, 1f)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -492,7 +511,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}, t
                 ) { page ->
                     Box(
                         Modifier.fillMaxSize().graphicsLayer {
-                            val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                            val pageOffset = page - (pagerState.currentPage - pagerState.currentPageOffsetFraction)
                             translationX = -pageOffset * size.width * 0.20f
                             alpha = 1f - kotlin.math.abs(pageOffset).coerceIn(0f, 1f) * 0.12f
                         }
