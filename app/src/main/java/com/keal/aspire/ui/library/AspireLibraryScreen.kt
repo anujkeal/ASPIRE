@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.keal.aspire.navigation.aspirePressable
 import com.keal.aspire.playback.AspirePlaybackController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.net.Uri
@@ -444,7 +445,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                                         if (kotlin.math.abs(chipPositions[index] - x) > 0.5f) chipPositions[index] = x
                                         if (kotlin.math.abs(chipWidths[index] - width) > 0.5f) chipWidths[index] = width
                                     }
-                                    .clickable { scope.launch { pagerState.animateScrollToPage(index) } }
+                                    .aspirePressable { scope.launch { pagerState.animateScrollToPage(index) } }
                                     .padding(horizontal = 19.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -507,7 +508,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                                 verticalArrangement = Arrangement.spacedBy(20.dp)
                             ) {
                                 items(albums.filter { query.isBlank() || it.name.contains(query, true) || it.artist.contains(query, true) }, key = { it.id }) { album ->
-                                    Column(Modifier.clickable { selectedAlbum = album.id }) {
+                                    Column(Modifier.aspirePressable { selectedAlbum = album.id }) {
                                         ArtworkImage(album.art, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)), targetSizeDp = 240.dp)
                                         Text(album.name, color = Ink.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                                         Text(album.artist, color = Ink.Grey, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -516,7 +517,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                             }
                             2 -> LazyColumn(state = artistsListState) {
                                 items(artists.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.name }) { artist ->
-                                    Row(Modifier.fillMaxWidth().height(76.dp).clickable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(Modifier.fillMaxWidth().height(76.dp).aspirePressable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.Surface), contentAlignment = Alignment.Center) {
                                             ArtworkImage(artist.artwork, Modifier.fillMaxSize().clip(CircleShape), targetSizeDp = 48.dp)
                                         }
@@ -529,7 +530,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                             }
                             else -> LazyColumn(state = genresListState) {
                                 items(genres.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.id }) { genre ->
-                                    Row(Modifier.fillMaxWidth().height(64.dp).clickable { selectedGenre = genre }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(Modifier.fillMaxWidth().height(64.dp).aspirePressable { selectedGenre = genre }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(genre.name, color = Ink.White, modifier = Modifier.weight(1f))
                                         Text("${genre.count} songs", color = Ink.Grey, fontSize = 13.sp)
                                     }
@@ -669,7 +670,7 @@ private fun SongResults(
                             translationY = (1f - progress) * 12.dp.toPx()
                         } else Modifier
                     )
-                    .clickable { onPlay(song) }
+                    .aspirePressable { onPlay(song) }
                     .padding(start = 25.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
