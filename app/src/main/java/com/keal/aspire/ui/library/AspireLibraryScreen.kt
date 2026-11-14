@@ -423,7 +423,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                             .width(with(density) { baseWidth.toDp() })
                             .height(LibraryTuning.ChipHeight)
                             .graphicsLayer {
-                                val pagePosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, (tabNames.size - 1).toFloat())
+                                val pagePosition = (pagerState.currentPage - pagerState.currentPageOffsetFraction).coerceIn(0f, (tabNames.size - 1).toFloat())
                                 val lower = pagePosition.toInt()
                                 val upper = (lower + 1).coerceAtMost(tabNames.lastIndex)
                                 val fraction = pagePosition - lower
