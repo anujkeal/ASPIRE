@@ -123,15 +123,19 @@ fun AspireNavigationHost() {
     }
 
     fun closePlayer() {
-        if (!sheetVisible || sheetAnimating) return
+        if (!sheetVisible) return
         sheetAnimating = true
         scope.launch {
-            if (animationsEnabled(context)) {
-                sheetProgress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
-            } else sheetProgress.snapTo(0f)
+            sheetProgress.stop()
+            if (animationsEnabled(context)) sheetProgress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
+            else sheetProgress.snapTo(0f)
             sheetVisible = false
             sheetAnimating = false
         }
+    }
+
+    fun backFromLibrary() {
+        scope.launch { finishPop() }
     }
 
     PredictiveBackHandler(enabled = sheetVisible || canGoBack) { events ->
@@ -239,6 +243,13 @@ fun AspireNavigationHost() {
                     -AspireNavigationMotion.ParallaxFraction * (1f - p) * widthPx
                 }
                 translationX = offset
+                if (sheetVisible || sheetAnimating) {
+                    val sheet = sheetProgress.value
+                    scaleX = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
+                    scaleY = 1f - (1f - AspireNavigationMotion.SheetScale) * sheet
+                    clip = true
+                    shape = RoundedCornerShape((12f * sheet).dp)
+                }
             }.drawWithContent {
                 drawContent()
                 if (transitioning) {
@@ -246,9 +257,12 @@ fun AspireNavigationHost() {
                     val alpha = AspireNavigationMotion.PushDimAlpha * if (direction == TransitionDirection.Push) p else (1f - p)
                     drawRect(Color.Black.copy(alpha = alpha))
                 }
+                if (sheetVisible || sheetAnimating) {
+                    drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * sheetProgress.value))
+                }
             }
         ) {
-            AspireDestinationContent(base, ::openLibrary, ::openPlayer)
+            AspireDestinationContent(base, ::openLibrary, ::openPlayer, ::backFromLibrary)
         }
 
         if (transitioning) {
@@ -258,7 +272,7 @@ fun AspireNavigationHost() {
                     translationX = if (direction == TransitionDirection.Push) (1f - p) * widthPx else p * widthPx
                 }.background(Color(0xFF050505))
             ) {
-                AspireDestinationContent(top, ::openLibrary, ::openPlayer)
+                AspireDestinationContent(top, ::openLibrary, ::openPlayer, ::backFromLibrary)
                 if (direction == TransitionDirection.Push) {
                     Box(
                         Modifier.align(androidx.compose.ui.Alignment.CenterStart)
@@ -274,22 +288,6 @@ fun AspireNavigationHost() {
         }
 
         if (sheetVisible || sheetAnimating) {
-            Box(
-                Modifier.fillMaxSize().zIndex(3f)
-                    .graphicsLayer {
-                        val p = sheetProgress.value
-                        scaleX = 1f - (1f - AspireNavigationMotion.SheetScale) * p
-                        scaleY = 1f - (1f - AspireNavigationMotion.SheetScale) * p
-                        clip = true
-                        shape = RoundedCornerShape((12f * p).dp)
-                    }
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * sheetProgress.value))
-                    }
-            ) {
-                // The base screen remains alive and is only transformed.
-            }
             Box(
                 Modifier.fillMaxSize().zIndex(4f)
                     .graphicsLayer {
@@ -353,7 +351,8 @@ fun AspireNavigationHost() {
 private fun AspireDestinationContent(
     destination: AspireDestination,
     onOpenLibrary: () -> Unit,
-    onOpenPlayer: () -> Unit
+    onOpenPlayer: () -> Unit,
+    onBack: () -> Unit
 ) {
     when (destination) {
         AspireDestination.Home -> AspireHomeScreen(
@@ -361,15 +360,10 @@ private fun AspireDestinationContent(
             onOpenNowPlaying = onOpenPlayer
         )
         AspireDestination.Library -> AspireLibraryScreen(
-            onBack = { onOpenLibraryBackPlaceholder(onOpenLibrary) },
+            onBack = onBack,
             onOpenNowPlaying = onOpenPlayer
         )
     }
-}
-
-// Library's explicit back affordance pops through the same stack transition as system back.
-private fun onOpenLibraryBackPlaceholder(onOpenLibrary: () -> Unit) {
-    // Replaced by the host's BackHandler / edge-swipe path below.
 }
 
 private fun navigationHaptic(context: Context) {
