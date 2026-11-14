@@ -26,8 +26,10 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,9 +37,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import com.keal.aspire.ui.home.AspireHomeScreen
 import com.keal.aspire.ui.library.AspireLibraryScreen
@@ -45,8 +44,6 @@ import com.keal.aspire.ui.nowplaying.AspireNowPlayingScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 private enum class AspireDestination { Home, Library }
 private enum class TransitionDirection { Push, Pop }
@@ -65,6 +62,10 @@ fun AspireNavigationHost() {
     var transitioning by remember { mutableStateOf(false) }
     var sheetVisible by remember { mutableStateOf(false) }
     var sheetAnimating by remember { mutableStateOf(false) }
+    var interactivePop by remember { mutableStateOf(false) }
+    var interactiveProgress by remember { mutableFloatStateOf(0f) }
+    var interactiveSheetDrag by remember { mutableStateOf(false) }
+    var sheetDragProgress by remember { mutableFloatStateOf(1f) }
 
     val canGoBack = stack.size > 1
 
@@ -205,19 +206,25 @@ fun AspireNavigationHost() {
                             transitionTo = stack[stack.lastIndex - 1]
                             direction = TransitionDirection.Pop
                             transitioning = true
-                            progress.snapTo(0f)
+                            interactivePop = true
+                            interactiveProgress = 0f
+                            scope.launch { progress.stop() }
                         }
                         if (started) {
-                            progress.snapTo((dragX / size.width.toFloat()).coerceIn(0f, 1f))
+                            interactiveProgress = (dragX / size.width.toFloat()).coerceIn(0f, 1f)
                             change.consume()
                         }
                         if (!change.pressed) break
                     }
                     if (started) {
-                        val fraction = progress.value
-                        if (fraction >= AspireNavigationMotion.SwipeCommitFraction ||
-                            velocity >= AspireNavigationMotion.FlingVelocityPxPerSecond
-                        ) finishPop() else cancelPop()
+                        val fraction = interactiveProgress
+                        scope.launch {
+                            progress.snapTo(fraction)
+                            interactivePop = false
+                            if (fraction >= AspireNavigationMotion.SwipeCommitFraction ||
+                                velocity >= AspireNavigationMotion.FlingVelocityPxPerSecond
+                            ) finishPop() else cancelPop()
+                        }
                     }
                 }
             }
@@ -235,7 +242,8 @@ fun AspireNavigationHost() {
         // Base screen stays composed under the incoming screen, avoiding a blank frame.
         Box(
             Modifier.fillMaxSize().zIndex(0f).graphicsLayer {
-                val p = if (transitioning) progress.value else 1f
+                val activeProgress = if (interactivePop) interactiveProgress else progress.value
+                val p = if (transitioning) activeProgress else 1f
                 val offset = if (!transitioning) 0f else if (direction == TransitionDirection.Push) {
                     -AspireNavigationMotion.ParallaxFraction * p * widthPx
                 } else {
@@ -252,12 +260,12 @@ fun AspireNavigationHost() {
             }.drawWithContent {
                 drawContent()
                 if (transitioning) {
-                    val p = progress.value
+                    val p = if (interactivePop) interactiveProgress else progress.value
                     val alpha = AspireNavigationMotion.PushDimAlpha * if (direction == TransitionDirection.Push) p else (1f - p)
                     drawRect(Color.Black.copy(alpha = alpha))
                 }
                 if (sheetVisible || sheetAnimating) {
-                    drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * sheetProgress.value))
+                    drawRect(Color.Black.copy(alpha = AspireNavigationMotion.SheetDimAlpha * (if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value)))
                 }
             }
         ) {
@@ -267,7 +275,7 @@ fun AspireNavigationHost() {
         if (transitioning) {
             Box(
                 Modifier.fillMaxSize().zIndex(1f).graphicsLayer {
-                    val p = progress.value
+                    val p = if (interactivePop) interactiveProgress else progress.value
                     translationX = if (direction == TransitionDirection.Push) (1f - p) * widthPx else p * widthPx
                 }.background(Color(0xFF050505))
             ) {
@@ -290,7 +298,8 @@ fun AspireNavigationHost() {
             Box(
                 Modifier.fillMaxSize().zIndex(4f)
                     .graphicsLayer {
-                        translationY = (1f - sheetProgress.value) * heightPx
+                        val p = if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value
+                        translationY = (1f - p) * heightPx
                         clip = true
                         shape = RoundedCornerShape(
                             topStart = AspireNavigationMotion.SheetCornerRadiusDp.dp,
@@ -317,33 +326,38 @@ fun AspireNavigationHost() {
                                 if (!active && totalY > viewConfiguration.touchSlop * 1.4f) {
                                     active = true
                                     sheetAnimating = true
-                                    sheetProgress.stop()
+                                    interactiveSheetDrag = true
+                                    scope.launch { sheetProgress.stop() }
                                 }
                                 if (active) {
-                                    sheetProgress.snapTo((1f - totalY / size.height.toFloat()).coerceIn(0f, 1f))
+                                    sheetDragProgress = (1f - totalY / size.height.toFloat()).coerceIn(0f, 1f)
                                     change.consume()
                                 }
                                 if (!change.pressed) break
                             }
                             if (active) {
                                 val flingDown = velocityTracker.calculateVelocity().y >= AspireNavigationMotion.FlingVelocityPxPerSecond
-                                val dismiss = sheetProgress.value < (1f - AspireNavigationMotion.SheetDismissFraction) || flingDown
-                                if (dismiss) {
-                                    if (animationsEnabled(context)) sheetProgress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
-                                    else sheetProgress.snapTo(0f)
-                                    sheetVisible = false
-                                    sheetAnimating = false
-                                    navigationHaptic(context)
-                                } else {
-                                    if (animationsEnabled(context)) sheetProgress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
-                                    else sheetProgress.snapTo(1f)
-                                    sheetAnimating = false
+                                val dismiss = sheetDragProgress < (1f - AspireNavigationMotion.SheetDismissFraction) || flingDown
+                                scope.launch {
+                                    sheetProgress.snapTo(sheetDragProgress)
+                                    interactiveSheetDrag = false
+                                    if (dismiss) {
+                                        if (animationsEnabled(context)) sheetProgress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
+                                        else sheetProgress.snapTo(0f)
+                                        sheetVisible = false
+                                        sheetAnimating = false
+                                        navigationHaptic(context)
+                                    } else {
+                                        if (animationsEnabled(context)) sheetProgress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
+                                        else sheetProgress.snapTo(1f)
+                                        sheetAnimating = false
+                                    }
                                 }
                             }
                         }
                     }
             ) {
-                AspireNowPlayingScreen(onBack = ::closePlayer, transitionProgress = { sheetProgress.value })
+                AspireNowPlayingScreen(onBack = ::closePlayer, transitionProgress = { if (interactiveSheetDrag) sheetDragProgress else sheetProgress.value })
             }
         }
     }
