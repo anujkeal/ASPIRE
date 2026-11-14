@@ -269,7 +269,7 @@ fun AspireNavigationHost() {
                 }
             }
         ) {
-            AspireDestinationContent(base, ::openLibrary, ::openPlayer, ::backFromLibrary)
+            AspireDestinationContent(base, ::openLibrary, ::openPlayer, ::backFromLibrary, { 1f })
         }
 
         if (transitioning) {
@@ -279,7 +279,10 @@ fun AspireNavigationHost() {
                     translationX = if (direction == TransitionDirection.Push) (1f - p) * widthPx else p * widthPx
                 }.background(Color(0xFF050505))
             ) {
-                AspireDestinationContent(top, ::openLibrary, ::openPlayer, ::backFromLibrary)
+                AspireDestinationContent(top, ::openLibrary, ::openPlayer, ::backFromLibrary, {
+                    val p = if (interactivePop) interactiveProgress else progress.value
+                    if (direction == TransitionDirection.Push) p else 1f - p
+                })
                 if (direction == TransitionDirection.Push) {
                     Box(
                         Modifier.align(androidx.compose.ui.Alignment.CenterStart)
@@ -368,7 +371,8 @@ private fun AspireDestinationContent(
     destination: AspireDestination,
     onOpenLibrary: () -> Unit,
     onOpenPlayer: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    titleTransitionProgress: () -> Float
 ) {
     when (destination) {
         AspireDestination.Home -> AspireHomeScreen(
@@ -377,7 +381,8 @@ private fun AspireDestinationContent(
         )
         AspireDestination.Library -> AspireLibraryScreen(
             onBack = onBack,
-            onOpenNowPlaying = onOpenPlayer
+            onOpenNowPlaying = onOpenPlayer,
+            titleTransitionProgress = titleTransitionProgress
         )
     }
 }
