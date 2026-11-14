@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import com.keal.aspire.navigation.aspirePressable
 import com.keal.aspire.playback.AspirePlaybackController
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -488,7 +489,7 @@ private fun HomeActionCard(modifier: Modifier, icon: HomeIcon, title: String, su
         modifier = modifier.clip(RoundedCornerShape(27.dp))
             .background(CardSurface)
             .border(1.dp, Hairline, RoundedCornerShape(27.dp))
-            .clickable(onClick = onClick)
+            .aspirePressable(onClick)
             .padding(horizontal = 20.dp, vertical = 19.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -505,7 +506,7 @@ private fun MiniPlayer(track: SavedTrack, onClick: () -> Unit, onPlayPause: () -
     Row(
         Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(25.dp))
             .background(Color(0xE8161616)).border(1.dp, Color(0xFF303030), RoundedCornerShape(25.dp))
-            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 11.dp),
+            .aspirePressable(onClick).padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val artwork = rememberAlbumArtwork(track.albumId)
