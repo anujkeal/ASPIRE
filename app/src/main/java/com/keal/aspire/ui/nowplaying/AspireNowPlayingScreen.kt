@@ -140,10 +140,7 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
     var showInfo by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    var screenDrag by remember { mutableFloatStateOf(0f) }
     var artDrag by remember { mutableFloatStateOf(0f) }
-    val enterScale = remember { Animatable(0.94f) }
-    val enterAlpha = remember { Animatable(0f) }
     val artPlaybackScale by animateFloatAsState(
         targetValue = if (playback.isPlaying) 1f else 0.90f,
         animationSpec = spring(
@@ -169,8 +166,6 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         AspirePlaybackController.connect(context)
-        launch { enterScale.animateTo(1f, tween(NowPlayingTuning.EntryDurationMs)) }
-        enterAlpha.animateTo(1f, tween(NowPlayingTuning.EntryDurationMs))
     }
 
 
@@ -180,27 +175,6 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
             .background(PlayerInk.Background)
             .windowInsetsPadding(WindowInsets.statusBars)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .graphicsLayer {
-                translationY = screenDrag
-                alpha = (1f - (screenDrag / 520f)).coerceIn(0.25f, 1f)
-            }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onVerticalDrag = { _, amount -> screenDrag = (screenDrag + amount).coerceAtLeast(0f) },
-                    onDragEnd = {
-                        if (screenDrag > NowPlayingTuning.SwipeDismissPx) onBack()
-                        else scope.launch {
-                            val start = screenDrag
-                            for (step in 1..8) {
-                                screenDrag = start * (1f - step / 8f)
-                                delay(12L)
-                            }
-                            screenDrag = 0f
-                        }
-                    },
-                    onDragCancel = { screenDrag = 0f }
-                )
-            }
     ) {
         val artSize = minOf(
             maxWidth - NowPlayingTuning.ArtHorizontalMargin * 2,
@@ -248,9 +222,8 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                     uri = playback.artworkUri,
                     modifier = Modifier.size(artSize)
                         .graphicsLayer {
-                            scaleX = artPlaybackScale * enterScale.value
-                            scaleY = artPlaybackScale * enterScale.value
-                            alpha = enterAlpha.value
+                            scaleX = artPlaybackScale
+                            scaleY = artPlaybackScale
                         }
                         .pointerInput(playback.mediaId) {
                             detectHorizontalDragGestures(
