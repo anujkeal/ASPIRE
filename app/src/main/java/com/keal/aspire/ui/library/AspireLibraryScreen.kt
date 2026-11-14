@@ -426,7 +426,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                                 val lower = pagePosition.toInt()
                                 val upper = (lower + 1).coerceAtMost(tabNames.lastIndex)
                                 val fraction = pagePosition - lower
-                                val x = chipPositions[lower] + (chipPositions[upper] - chipPositions[lower]) * fraction
+                                val x = with(density) { 25.dp.toPx() } + chipPositions[lower] + (chipPositions[upper] - chipPositions[lower]) * fraction
                                 val width = chipWidths[lower] + (chipWidths[upper] - chipWidths[lower]) * fraction
                                 translationX = x
                                 scaleX = width / baseWidth
@@ -445,7 +445,7 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                                         if (kotlin.math.abs(chipPositions[index] - x) > 0.5f) chipPositions[index] = x
                                         if (kotlin.math.abs(chipWidths[index] - width) > 0.5f) chipWidths[index] = width
                                     }
-                                    .aspirePressable { scope.launch { pagerState.animateScrollToPage(index) } }
+                                    .aspirePressable { scope.launch { if (animationsEnabled(context)) pagerState.animateScrollToPage(index) else pagerState.scrollToPage(index) } }
                                     .padding(horizontal = 19.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -460,7 +460,8 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                     val index = pagerState.currentPage
                     if (chipWidths[index] > 0f) {
                         val center = chipPositions[index] + chipWidths[index] / 2f
-                        chipScrollState.animateScrollTo((center - viewportPx / 2f).coerceAtLeast(0f).toInt())
+                        val target = (center - viewportPx / 2f).coerceAtLeast(0f).toInt()
+                        if (animationsEnabled(context)) chipScrollState.animateScrollTo(target) else chipScrollState.scrollTo(target)
                     }
                 }
             }
