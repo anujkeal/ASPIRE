@@ -190,6 +190,7 @@ fun AspireNavigationHost() {
             try {
                 events.collect { event -> progress.snapTo(event.progress) }
                 if (!reversingInFlightPush && stack.size > 1) stack.removeAt(stack.lastIndex)
+                if (reversingInFlightPush) navigationPending = false
                 transitioning = false
                 progress.snapTo(1f)
                 navigationHaptic(context)
@@ -197,7 +198,10 @@ fun AspireNavigationHost() {
                 withContext(NonCancellable) {
                     if (animationsEnabled(context)) progress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
                     else progress.snapTo(0f)
-                    if (reversingInFlightPush) stack.add(transitionFrom)
+                    if (reversingInFlightPush) {
+                        stack.add(transitionFrom)
+                        navigationPending = false
+                    }
                     transitioning = false
                     progress.snapTo(1f)
                 }
@@ -278,6 +282,7 @@ fun AspireNavigationHost() {
                                     progress.snapTo(1f)
                                 }
                                 reversingPush = false
+                                navigationPending = false
                                 navigationHaptic(context)
                             } else if (commit) finishPop() else cancelPop()
                         }
