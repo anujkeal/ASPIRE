@@ -269,7 +269,7 @@ internal object Artwork {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
+fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}, titleTransitionProgress: () -> Float = { 1f }) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var allowed by remember { mutableStateOf(checkAudioPermission(context)) }
@@ -407,7 +407,13 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
             selectedGenre != null -> selectedGenre!!.name
             else -> "Library"
         }
-        Text(title, color = Ink.White, fontSize = 35.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 26.dp, top = 10.dp, bottom = 20.dp))
+        Text(title, color = Ink.White, fontSize = 35.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 26.dp, top = 10.dp, bottom = 20.dp).graphicsLayer {
+            val p = titleTransitionProgress().coerceIn(0f, 1f)
+            alpha = p
+            translationY = (1f - p) * 16.dp.toPx()
+            scaleX = 0.96f + 0.04f * p
+            scaleY = 0.96f + 0.04f * p
+        })
         if (selectedAlbum != null || selectedArtist != null || selectedGenre != null) {
             Text("‹  All", color = Ink.Grey, modifier = Modifier.clickable {
                 selectedAlbum = null; selectedArtist = null; selectedGenre = null
