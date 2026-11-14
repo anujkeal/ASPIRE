@@ -49,6 +49,13 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -267,6 +274,14 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
     var genres by remember { mutableStateOf(emptyList<GenreItem>()) }
     var loading by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Songs") }
+    val tabNames = remember { listOf("Songs", "Albums", "Artists", "Genres") }
+    val pagerState = rememberPagerState(pageCount = { tabNames.size })
+    val albumsGridState = rememberLazyGridState()
+    val artistsListState = rememberLazyListState()
+    val genresListState = rememberLazyListState()
+    val chipPositions = remember { mutableStateListOf(0f, 0f, 0f, 0f) }
+    val chipWidths = remember { mutableStateListOf(0f, 0f, 0f, 0f) }
+    val chipScrollState = rememberScrollState()
     val playback by AspirePlaybackController.state.collectAsStateWithLifecycle()
     val playingId = playback.mediaId
     var query by remember { mutableStateOf("") }
@@ -300,6 +315,11 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
         if (result.resultCode == android.app.Activity.RESULT_OK) scan()
     }
 
+    LaunchedEffect(pagerState.currentPage) { tab = tabNames[pagerState.currentPage] }
+    LaunchedEffect(tab) {
+        val target = tabNames.indexOf(tab)
+        if (target >= 0 && target != pagerState.currentPage) pagerState.animateScrollToPage(target)
+    }
     LaunchedEffect(Unit) {
         if (!allowed) {
             permissionLauncher.launch(
@@ -389,73 +409,126 @@ fun AspireLibraryScreen(onBack: () -> Unit, onOpenNowPlaying: () -> Unit = {}) {
                 selectedAlbum = null; selectedArtist = null; selectedGenre = null
             }.padding(start = 26.dp, bottom = 16.dp))
         } else {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 25.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 22.dp)
-            ) {
-                items(listOf("Songs", "Albums", "Artists", "Genres")) { name ->
-                    val selected = tab == name
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom = 22.dp)) {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val viewportPx = with(density) { maxWidth.toPx() }
+                Box(Modifier.fillMaxWidth().height(LibraryTuning.ChipHeight).horizontalScroll(chipScrollState)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(horizontal = 25.dp)) {
+                        tabNames.forEachIndexed { index, name ->
+                            Box(
+                                Modifier.height(LibraryTuning.ChipHeight)
+                                    .onGloballyPositioned { coordinates ->
+                                        val x = coordinates.positionInParent().x
+                                        val width = coordinates.size.width.toFloat()
+                                        if (kotlin.math.abs(chipPositions[index] - x) > 0.5f) chipPositions[index] = x
+                                        if (kotlin.math.abs(chipWidths[index] - width) > 0.5f) chipWidths[index] = width
+                                    }
+                                    .clickable { scope.launch { pagerState.animateScrollToPage(index) } }
+                                    .padding(horizontal = 19.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val pagePosition = pagerState.currentPage + pagerState.currentPageOffsetFraction
+                                val selectedFraction = (1f - kotlin.math.abs(pagePosition - index)).coerceIn(0f, 1f)
+                                Text(name, color = lerp(Ink.White, Color.Black, selectedFraction), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                    val baseWidth = chipWidths.firstOrNull()?.coerceAtLeast(1f) ?: 1f
                     Box(
-                        Modifier.height(LibraryTuning.ChipHeight).clip(CircleShape)
-                            .background(if (selected) Ink.White else Ink.Surface)
-                            .border(1.dp, if (selected) Ink.White else Ink.Border, CircleShape)
-                            .clickable { tab = name }.padding(horizontal = 19.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(name, color = if (selected) Color.Black else Ink.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Modifier.align(Alignment.CenterStart)
+                            .width(with(density) { baseWidth.toDp() })
+                            .height(LibraryTuning.ChipHeight)
+                            .graphicsLayer {
+                                val pagePosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, (tabNames.size - 1).toFloat())
+                                val lower = pagePosition.toInt()
+                                val upper = (lower + 1).coerceAtMost(tabNames.lastIndex)
+                                val fraction = pagePosition - lower
+                                val x = chipPositions[lower] + (chipPositions[upper] - chipPositions[lower]) * fraction
+                                val width = chipWidths[lower] + (chipWidths[upper] - chipWidths[lower]) * fraction
+                                translationX = x
+                                scaleX = width / baseWidth
+                                transformOrigin = TransformOrigin(0f, 0.5f)
+                            }
+                            .clip(CircleShape)
+                            .background(Ink.White)
+                    )
+                }
+                LaunchedEffect(pagerState.currentPage, chipPositions.toList(), chipWidths.toList(), viewportPx) {
+                    val index = pagerState.currentPage
+                    if (chipWidths[index] > 0f) {
+                        val center = chipPositions[index] + chipWidths[index] / 2f
+                        chipScrollState.animateScrollTo((center - viewportPx / 2f).coerceAtLeast(0f).toInt())
                     }
                 }
             }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-        when {
-            !allowed -> PermissionPrompt(denied) {
-                permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink.White) }
-            selectedAlbum != null || selectedArtist != null || selectedGenre != null -> SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { song -> AspirePlaybackController.play(context, songs, song); onOpenNowPlaying() }, onMenu = { menuSong = it })
-            tab == "Songs" -> if (filtered.isEmpty()) EmptyResults(::scan) else Row(Modifier.fillMaxSize()) {
-                SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { song -> AspirePlaybackController.play(context, songs, song); onOpenNowPlaying() }, onMenu = { menuSong = it }, modifier = Modifier.weight(1f))
-                AlphabetIndex(
-                    songs = filtered,
-                    state = listState,
-                    index = index,
-                    onLetter = jumpToLetter
-                )
-            }
-            tab == "Albums" -> LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(albums.filter { query.isBlank() || it.name.contains(query, true) || it.artist.contains(query, true) }, key = { it.id }) { album ->
-                    Column(Modifier.clickable { selectedAlbum = album.id }) {
-                        ArtworkImage(album.art, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)), targetSizeDp = 240.dp)
-                        Text(album.name, color = Ink.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                        Text(album.artist, color = Ink.Grey, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+            when {
+                !allowed -> PermissionPrompt(denied) {
+                    permissionLauncher.launch(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
                 }
-            }
-            tab == "Artists" -> LazyColumn {
-                items(artists.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.name }) { artist ->
-                    Row(Modifier.fillMaxWidth().height(76.dp).clickable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.Surface), contentAlignment = Alignment.Center) {
-                            ArtworkImage(artist.artwork, Modifier.fillMaxSize().clip(CircleShape), targetSizeDp = 48.dp)
+                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink.White) }
+                selectedAlbum != null || selectedArtist != null || selectedGenre != null ->
+                    SongResults(filtered, listState, entranceProgress, currentSong = playingId, onPlay = { song ->
+                        AspirePlaybackController.play(context, songs, song)
+                        onOpenNowPlaying()
+                    }, onMenu = { menuSong = it })
+                else -> HorizontalPager(
+                    state = pagerState,
+                    beyondViewportPageCount = 1,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    when (page) {
+                        0 -> if (filtered.isEmpty()) EmptyResults(::scan) else Row(Modifier.fillMaxSize()) {
+                            SongResults(
+                                filtered, listState, entranceProgress,
+                                currentSong = playingId,
+                                onPlay = { song -> AspirePlaybackController.play(context, songs, song); onOpenNowPlaying() },
+                                onMenu = { menuSong = it },
+                                modifier = Modifier.weight(1f)
+                            )
+                            AlphabetIndex(songs = filtered, state = listState, index = index, onLetter = jumpToLetter)
                         }
-                        Column(Modifier.padding(start = 14.dp)) {
-                            Text(artist.name, color = Ink.White, fontWeight = FontWeight.Medium)
-                            Text("${artist.count} songs", color = Ink.Grey, fontSize = 13.sp)
+                        1 -> LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            state = albumsGridState,
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            items(albums.filter { query.isBlank() || it.name.contains(query, true) || it.artist.contains(query, true) }, key = { it.id }) { album ->
+                                Column(Modifier.clickable { selectedAlbum = album.id }) {
+                                    ArtworkImage(album.art, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)), targetSizeDp = 240.dp)
+                                    Text(album.name, color = Ink.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                                    Text(album.artist, color = Ink.Grey, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                        2 -> LazyColumn(state = artistsListState) {
+                            items(artists.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.name }) { artist ->
+                                Row(Modifier.fillMaxWidth().height(76.dp).clickable { selectedArtist = artist.name }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.Surface), contentAlignment = Alignment.Center) {
+                                        ArtworkImage(artist.artwork, Modifier.fillMaxSize().clip(CircleShape), targetSizeDp = 48.dp)
+                                    }
+                                    Column(Modifier.padding(start = 14.dp)) {
+                                        Text(artist.name, color = Ink.White, fontWeight = FontWeight.Medium)
+                                        Text("${artist.count} songs", color = Ink.Grey, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
+                        else -> LazyColumn(state = genresListState) {
+                            items(genres.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.id }) { genre ->
+                                Row(Modifier.fillMaxWidth().height(64.dp).clickable { selectedGenre = genre }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(genre.name, color = Ink.White, modifier = Modifier.weight(1f))
+                                    Text("${genre.count} songs", color = Ink.Grey, fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 }
             }
-            else -> LazyColumn {
-                items(genres.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.id }) { genre ->
-                    Row(Modifier.fillMaxWidth().height(64.dp).clickable { selectedGenre = genre }.padding(horizontal = 26.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(genre.name, color = Ink.White, modifier = Modifier.weight(1f))
-                        Text("${genre.count} songs", color = Ink.Grey, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
         }
     }
 
