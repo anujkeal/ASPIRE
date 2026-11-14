@@ -7,6 +7,7 @@ import android.os.Vibrator
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.background
@@ -101,7 +102,7 @@ fun AspireNavigationHost() {
         scope.launch {
             progress.snapTo(0f)
             if (animationsEnabled(context)) {
-                progress.animateTo(1f, tween(AspireNavigationMotion.PushDurationMs))
+                progress.animateTo(1f, tween(AspireNavigationMotion.PushDurationMs, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)))
             } else progress.snapTo(1f)
             stack.add(AspireDestination.Library)
             transitioning = false
@@ -110,7 +111,7 @@ fun AspireNavigationHost() {
     }
 
     fun openPlayer() {
-        if (sheetVisible || sheetAnimating) return
+        if (transitioning || sheetVisible || sheetAnimating) return
         sheetVisible = true
         sheetAnimating = true
         scope.launch {
@@ -184,7 +185,7 @@ fun AspireNavigationHost() {
                 val edge = with(density) { AspireNavigationMotion.EdgeSwipeZoneDp.dp.toPx() }
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    if (down.position.x > edge || sheetVisible || stack.size <= 1) return@awaitEachGesture
+                    if (down.position.x > edge || sheetVisible || transitioning || stack.size <= 1) return@awaitEachGesture
                     var started = false
                     var dragX = 0f
                     var lastX = down.position.x
