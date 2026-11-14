@@ -64,6 +64,7 @@ fun AspireNavigationHost() {
     var sheetAnimating by remember { mutableStateOf(false) }
     var libraryCreated by remember { mutableStateOf(false) }
     var interactivePop by remember { mutableStateOf(false) }
+    var reversingPush by remember { mutableStateOf(false) }
     var interactiveProgress by remember { mutableFloatStateOf(0f) }
     var interactiveSheetDrag by remember { mutableStateOf(false) }
     var sheetDragProgress by remember { mutableFloatStateOf(1f) }
@@ -141,7 +142,7 @@ fun AspireNavigationHost() {
         scope.launch { finishPop() }
     }
 
-    PredictiveBackHandler(enabled = sheetVisible || canGoBack) { events ->
+    PredictiveBackHandler(enabled = sheetVisible || canGoBack || transitioning) { events ->
         if (sheetVisible) {
             try {
                 events.collect { event ->
@@ -155,7 +156,14 @@ fun AspireNavigationHost() {
                 throw cancelled
             }
         } else {
-            if (!transitioning) {
+            val reversingInFlightPush = transitioning && direction == TransitionDirection.Push
+            if (reversingInFlightPush) {
+                val oldFrom = transitionFrom
+                transitionFrom = transitionTo
+                transitionTo = oldFrom
+                direction = TransitionDirection.Pop
+                progress.snapTo(1f - progress.value)
+            } else if (!transitioning) {
                 transitionFrom = stack.last()
                 transitionTo = stack[stack.lastIndex - 1]
                 direction = TransitionDirection.Pop
@@ -164,13 +172,14 @@ fun AspireNavigationHost() {
             }
             try {
                 events.collect { event -> progress.snapTo(event.progress) }
-                if (stack.size > 1) stack.removeAt(stack.lastIndex)
+                if (!reversingInFlightPush && stack.size > 1) stack.removeAt(stack.lastIndex)
                 transitioning = false
                 progress.snapTo(1f)
                 navigationHaptic(context)
             } catch (cancelled: CancellationException) {
                 if (animationsEnabled(context)) progress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
                 else progress.snapTo(0f)
+                if (reversingInFlightPush) stack.add(transitionFrom)
                 transitioning = false
                 progress.snapTo(1f)
                 throw cancelled
@@ -184,7 +193,8 @@ fun AspireNavigationHost() {
                 val edge = with(density) { AspireNavigationMotion.EdgeSwipeZoneDp.dp.toPx() }
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    if (down.position.x > edge || sheetVisible || transitioning || stack.size <= 1) return@awaitEachGesture
+                    val canReversePush = transitioning && direction == TransitionDirection.Push
+                    if (down.position.x > edge || sheetVisible || (transitioning && !canReversePush) || (stack.size <= 1 && !canReversePush)) return@awaitEachGesture
                     var started = false
                     var dragX = 0f
                     var lastX = down.position.x
@@ -204,12 +214,22 @@ fun AspireNavigationHost() {
                         lastTime = change.uptimeMillis
                         if (!started && dragX > viewConfiguration.touchSlop) {
                             started = true
-                            transitionFrom = stack.last()
-                            transitionTo = stack[stack.lastIndex - 1]
-                            direction = TransitionDirection.Pop
-                            transitioning = true
+                            val inFlightPush = transitioning && direction == TransitionDirection.Push
+                            if (inFlightPush) {
+                                val oldFrom = transitionFrom
+                                transitionFrom = transitionTo
+                                transitionTo = oldFrom
+                                direction = TransitionDirection.Pop
+                                interactiveProgress = 1f - progress.value
+                            } else {
+                                transitionFrom = stack.last()
+                                transitionTo = stack[stack.lastIndex - 1]
+                                direction = TransitionDirection.Pop
+                                transitioning = true
+                                interactiveProgress = 0f
+                            }
+                            reversingPush = inFlightPush
                             interactivePop = true
-                            interactiveProgress = 0f
                             scope.launch { progress.stop() }
                         }
                         if (started) {
@@ -223,9 +243,24 @@ fun AspireNavigationHost() {
                         scope.launch {
                             progress.snapTo(fraction)
                             interactivePop = false
-                            if (fraction >= AspireNavigationMotion.SwipeCommitFraction ||
+                            val commit = fraction >= AspireNavigationMotion.SwipeCommitFraction ||
                                 velocity >= AspireNavigationMotion.FlingVelocityPxPerSecond
-                            ) finishPop() else cancelPop()
+                            if (reversingPush) {
+                                if (commit) {
+                                    if (animationsEnabled(context)) progress.animateTo(1f, AspireNavigationMotion.NavigationSpring)
+                                    else progress.snapTo(1f)
+                                    transitioning = false
+                                    progress.snapTo(1f)
+                                } else {
+                                    if (animationsEnabled(context)) progress.animateTo(0f, AspireNavigationMotion.NavigationSpring)
+                                    else progress.snapTo(0f)
+                                    stack.add(transitionFrom)
+                                    transitioning = false
+                                    progress.snapTo(1f)
+                                }
+                                reversingPush = false
+                                navigationHaptic(context)
+                            } else if (commit) finishPop() else cancelPop()
                         }
                     }
                 }
