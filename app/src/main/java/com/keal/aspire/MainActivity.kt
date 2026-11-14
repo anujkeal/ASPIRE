@@ -20,7 +20,6 @@ import com.keal.aspire.ui.home.AspireHomeScreen
 import com.keal.aspire.ui.library.AspireLibraryScreen
 import com.keal.aspire.ui.nowplaying.AspireNowPlayingScreen
 import com.keal.aspire.ui.splash.AspireSplashScreen
-import com.keal.aspire.ui.nowplaying.AspireNowPlayingScreen
 import com.keal.aspire.playback.AspirePlaybackController
 import com.keal.aspire.ui.theme.AspireTheme
 import kotlinx.coroutines.delay
@@ -40,7 +39,6 @@ class MainActivity : ComponentActivity() {
             AspireTheme {
                 var showHome by remember { mutableStateOf(false) }
                 var showLibrary by remember { mutableStateOf(false) }
-                var showNowPlaying by remember { mutableStateOf(false) }
                 var showNowPlaying by remember { mutableStateOf(false) }
                 val notificationPermission = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
