@@ -5,6 +5,7 @@ import android.provider.Settings
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * Central motion tuning for Aspire. Keep navigation motion independent from
@@ -55,11 +57,13 @@ fun animationsEnabled(context: Context): Boolean =
 
 @Composable
 fun Modifier.aspirePressable(onClick: () -> Unit): Modifier = composed {
+    val context = LocalContext.current
+    val reduceMotion = !animationsEnabled(context)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) AspireNavigationMotion.PressScale else 1f,
-        animationSpec = if (pressed) {
+        targetValue = if (pressed && !reduceMotion) AspireNavigationMotion.PressScale else 1f,
+        animationSpec = if (reduceMotion) snap() else if (pressed) {
             tween(AspireNavigationMotion.PressDurationMs)
         } else {
             AspireNavigationMotion.NavigationSpring
