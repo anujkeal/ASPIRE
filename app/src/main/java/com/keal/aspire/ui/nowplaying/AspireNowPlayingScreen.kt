@@ -130,7 +130,7 @@ private enum class PlayerGlyph {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun AspireNowPlayingScreen(onBack: () -> Unit) {
+fun AspireNowPlayingScreen(onBack: () -> Unit, transitionProgress: () -> Float = { 1f }) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val playback by AspirePlaybackController.state.collectAsStateWithLifecycle()
@@ -222,8 +222,11 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                     uri = playback.artworkUri,
                     modifier = Modifier.size(artSize)
                         .graphicsLayer {
-                            scaleX = artPlaybackScale
-                            scaleY = artPlaybackScale
+                            val entry = transitionProgress().coerceIn(0f, 1f)
+                            scaleX = artPlaybackScale * (0.82f + 0.18f * entry)
+                            scaleY = artPlaybackScale * (0.82f + 0.18f * entry)
+                            translationY = (1f - entry) * 32.dp.toPx()
+                            alpha = entry
                         }
                         .pointerInput(playback.mediaId) {
                             detectHorizontalDragGestures(
@@ -239,7 +242,13 @@ fun AspireNowPlayingScreen(onBack: () -> Unit) {
                 )
             }
 
-            Column(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.fillMaxWidth().graphicsLayer {
+                    val entry = transitionProgress().coerceIn(0f, 1f)
+                    alpha = entry
+                    translationY = (1f - entry) * 16.dp.toPx()
+                }
+            ) {
                 Text(
                     playback.title.ifBlank { "Nothing playing" },
                     color = PlayerInk.White,
