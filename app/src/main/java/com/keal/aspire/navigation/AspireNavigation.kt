@@ -269,7 +269,6 @@ fun AspireNavigationHost() {
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         val current = stack.last()
-        val activeProgress = if (interactivePop) interactiveProgress else progress.value
         val homeVisible = current == AspireDestination.Home ||
             (transitioning && (transitionFrom == AspireDestination.Home || transitionTo == AspireDestination.Home))
         val libraryVisible = libraryCreated && (current == AspireDestination.Library ||
@@ -280,7 +279,7 @@ fun AspireNavigationHost() {
             Modifier.fillMaxSize()
                 .zIndex(if (transitioning && direction == TransitionDirection.Pop) 0f else if (homeVisible) 0f else -1f)
                 .graphicsLayer {
-                    val p = if (transitioning) activeProgress else 1f
+                    val p = if (transitioning) { if (interactivePop) interactiveProgress else progress.value } else 1f
                     translationX = when {
                         !transitioning -> 0f
                         direction == TransitionDirection.Push && transitionFrom == AspireDestination.Home ->
@@ -300,7 +299,7 @@ fun AspireNavigationHost() {
                 }.drawWithContent {
                     drawContent()
                     if (transitioning && homeVisible) {
-                        val p = activeProgress
+                        val p = if (interactivePop) interactiveProgress else progress.value
                         val dim = when {
                             direction == TransitionDirection.Push && transitionFrom == AspireDestination.Home -> p
                             direction == TransitionDirection.Pop && transitionTo == AspireDestination.Home -> 1f - p
@@ -324,7 +323,7 @@ fun AspireNavigationHost() {
                 Modifier.fillMaxSize()
                     .zIndex(if (libraryVisible && transitioning) 1f else if (libraryVisible) 0f else -1f)
                     .graphicsLayer {
-                        val p = activeProgress
+                        val p = if (interactivePop) interactiveProgress else progress.value
                         translationX = when {
                             !transitioning -> 0f
                             direction == TransitionDirection.Push && transitionTo == AspireDestination.Library ->
@@ -354,7 +353,10 @@ fun AspireNavigationHost() {
                     onOpenNowPlaying = ::openPlayer,
                     titleTransitionProgress = {
                         if (!transitioning) 1f
-                        else if (direction == TransitionDirection.Push) activeProgress else 1f - activeProgress
+                        else {
+                            val p = if (interactivePop) interactiveProgress else progress.value
+                            if (direction == TransitionDirection.Push) p else 1f - p
+                        }
                     }
                 )
             }
@@ -364,7 +366,7 @@ fun AspireNavigationHost() {
         if (transitioning && direction == TransitionDirection.Push) {
             Box(
                 Modifier.fillMaxSize().zIndex(2f).graphicsLayer {
-                    translationX = (1f - activeProgress) * widthPx
+                    translationX = (1f - (if (interactivePop) interactiveProgress else progress.value)) * widthPx
                 }
             ) {
                 Box(
